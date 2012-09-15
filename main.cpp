@@ -11,7 +11,7 @@
 #include <assert.h>
 #include <cmath>
 #include <unistd.h>
-  
+
 #define HIER_SEPARATOR "__"
  
 //for timebounds that are not assigned anything meaningful
@@ -54,19 +54,9 @@ enum OracleType {
 
 
 
-
-namespace outfiles {
-  ofstream propagation;
-}
+ 
 
 
-
-//for queues and channels, this indicates whether to consider
-//timestamps or not
-enum PacketType {
-  PACKET_CREDIT,
-  PACKET_DATA
-};
 
 
 string itos(int i) {
@@ -76,31 +66,29 @@ string itos(int i) {
   return s;
 }
 
+unsigned int numBitsRequired( unsigned int maxval) {
+  unsigned int x = log2(maxval);
+  unsigned int w = x + 2;
+  //cout << "using " << w << " bits for signal with maxval " << maxval << "\n";
+  return w;
+}
+
 
 
 void aImpliesBoundedFutureB( Expr * a, Expr * b, unsigned int t, string name);
 
 
 
-/*!A Hier Object is anything in the hierarchy that contains 1 or more
-  primitives or composite (e.g. credit loop) objects in its subtree.*/
-class Hier_Object {
-public:
-  string name; 
-  vector<Hier_Object*> children; 
-    
-  //root not has no name... (to help keep flat names shorter)
-  Hier_Object( ) {
+//root not has no name... (to help keep flat names shorter)
+Hier_Object::Hier_Object( ) {
     name = "";        
   };
-  Hier_Object( const string n, Hier_Object *parent) {
+Hier_Object::Hier_Object( const string n, Hier_Object *parent) {
     name = parent->name + n + HIER_SEPARATOR;
     parent->addChild(this);
-  };
-    
-  void addChild (Hier_Object *x) { children.push_back(x); }
 };
 
+void Hier_Object::addChild (Hier_Object *x) { children.push_back(x); }
 
 
 
@@ -110,19 +98,6 @@ public:
 
 
 
-/*! \brief xmas kernel primitive primitives don't have internal
-  channels
-*/
-class Primitive : public Hier_Object {
-public:
-  vector <Init_Port *> init_ports;
-  vector <Targ_Port *> targ_ports;
-  Primitive(string n, Hier_Object *parent) : Hier_Object(n,parent) { }
-
-  virtual void buildPrimitiveLogic ( ) =0;
-  virtual void propagateLatencyLemmas() {;}
-  void printConnectivity(ostream &f);
-};
 
 
 
@@ -132,6 +107,8 @@ public:
 class Channel : public Hier_Object {
   unsigned int width;
   PacketType type;
+  bool assertIrdyPersistant;
+  bool assertTrdyPersistant;
 public:
   Init_Port *initiator; // (who controls the irdy/data)
   Targ_Port *target; // (who controls the trdy)
@@ -139,9 +116,6 @@ public:
   Signal *irdy;
   Signal *trdy;
   Signal *data;
-
-  bool assertIrdyPersistant;
-  bool assertTrdyPersistant;
 
   Channel_Qos *qos;
   
@@ -259,6 +233,15 @@ public:
 };
 
 
+
+
+string Channel_Qos::printHeader() {
+    std::stringstream out;
+    out << "channel: " << setw(16) << ch->name; 
+    return out.str();
+  };
+
+
 Channel_Qos::Channel_Qos(Channel *c) {
   ch = c;
   timeToSinkBound        = T_PROP_NULL;
@@ -271,18 +254,19 @@ Channel_Qos::Channel_Qos(Channel *c) {
 
 
 void Channel_Qos::printChannelQos (ostream &f) {
-  f << "channel: "                 << setw(24) << left << ch->name;
-  f << "\n" 
-    << setw(26) << right << " targetBound: "             << setw(4) << right << targetBound 
-    << setw(26) << right << " targetResponseBound: "     << setw(4) << right << targetResponseBound 
-    << setw(26) << right << " timeToSinkBound: "         << setw(4) << right << timeToSinkBound 
+  //  f << "channel: "                 << setw(24) << left << ch->name;
+  f << printHeader(); 
+  f 
+    << setw(27) << right << "  timeToSinkBound: "         << setw(3) << right << timeToSinkBound 
+    << right << "  ageBound: "                << setw(3) << right << ageBound 
+    << "\n" 
+    << setw(36) << right << "  targetBound (response): "             << setw(3) << right << targetBound 
+    << " ("     << setw(3) << right << targetResponseBound << ")" 
     << "\n"
-    << setw(26) << right << " initiatorBound: "          << setw(4) << right << initiatorBound 
-    << setw(26) << right << " initiatorResponseBound: "  << setw(4) << right << initiatorResponseBound 
-    << setw(26) << right << " ageBound: "                << setw(4) << right << ageBound 
-    <<"\n";
+    << setw(36) << right << " initiatorBound (repsonse): "          << setw(3) << right << initiatorBound 
+    << " ("  << setw(3) << right << initiatorResponseBound << ")"
+    << "\n";
 }
-
 
 bool Channel_Qos::hasTargetResponseBound ()     { return targetResponseBound    != T_PROP_NULL;  }
 bool Channel_Qos::hasTargetBound ()             { return targetBound            != T_PROP_NULL;  }
@@ -300,41 +284,40 @@ unsigned int Channel_Qos::getAgeBound ()                { return ageBound       
 
 // if modifiedChannels bound is lower than current bound, add self to modified set
 void Channel_Qos::updateTargetResponseBound( unsigned int b) {
-  if (b < targetResponseBound) {
+  if (b < targetResponseBound) 
+    {
     targetResponseBound = b;
-    //       outfiles::propagation << "channel: " << setw(25) << left << name 
-    // 			    << " updated targetResponseBound to: " << targetResponseBound << "\n";
+    g::outQos << printHeader() << " updated targetResponseBound to: " << targetResponseBound << "\n";
     network::n->modifiedChannels.insert(ch);
   } 
   return;
 };
 
-
 void Channel_Qos::updateInitiatorResponseBound( unsigned int b) {
-  if (b < initiatorResponseBound) {
+  if (b < initiatorResponseBound) 
+    {
     initiatorResponseBound = b;
-    outfiles::propagation << "channel: " << setw(25) << left << ch->name 
-			  << " updated initiatorResponseBound to: " << initiatorResponseBound << "\n";
+    g::outQos << printHeader() << " updated initiatorResponseBound to: " << initiatorResponseBound << "\n";
     network::n->modifiedChannels.insert(ch);
   } 
   return;
 };
 
 void Channel_Qos::updateTargetBound( unsigned int b) {
-  if (b < targetBound) {
+  if (b < targetBound) 
+    {
     targetBound = b;
-    outfiles::propagation << "channel: " << setw(25) << left << ch->name 
-			  << " updated targetBound to: " << targetBound << "\n";
+    g::outQos << printHeader() << " updated targetBound to: " << targetBound << "\n";
     network::n->modifiedChannels.insert(ch);
   } 
   return;
 };
 
 void Channel_Qos::updateInitiatorBound( unsigned int b) {
-  if (b < initiatorBound) {
+  if (b < initiatorBound) 
+    {
     initiatorBound = b;
-    outfiles::propagation << "channel: " << setw(25) << left <<ch->name 
-			  << " updated initiatorBound to: " << initiatorBound << "\n";
+    g::outQos << printHeader() << " updated initiatorBound to: " << initiatorBound << "\n";
     network::n->modifiedChannels.insert(ch);
   } 
   return;
@@ -344,8 +327,7 @@ void Channel_Qos::updateTimeToSinkBound( unsigned int t) {
   if (t < timeToSinkBound) 
     {
       timeToSinkBound = t;
-      outfiles::propagation << "channel: " << setw(25) << left <<ch->name 
-			    << " updated timeToSinkBound to: " << timeToSinkBound << "\n";
+      g::outQos << printHeader() << " updated timeToSinkBound to: " << timeToSinkBound << "\n";
       network::n->modifiedChannels.insert(ch);
     } 
   return;
@@ -355,8 +337,7 @@ void Channel_Qos::updateAgeBound( unsigned int t) {
   if (t < ageBound) 
     {
       ageBound = t;
-      outfiles::propagation << "channel: " << setw(25) << left <<ch->name 
-			    << " updated ageBound to: " << ageBound << "\n";
+      g::outQos << printHeader() << " updated ageBound to: " << ageBound << "\n";
       network::n->modifiedChannels.insert(ch);
     } 
   return;
@@ -704,112 +685,77 @@ public:
 
 
 
-class Slot_Qos {
-  unsigned int timeToSink;
-  unsigned int maxAge;
-public:
-  Slot_Qos() {
-    timeToSink = T_PROP_NULL;
-    maxAge = T_PROP_NULL;
-  }
-  bool         hasTimeToSink()                 {return timeToSink != T_PROP_NULL;};
-  unsigned int getTimeToSink()                 {return timeToSink;};
-  void         setTimeToSink(unsigned int t)   { timeToSink = min(timeToSink,t);}
-  bool         hasMaxAge()                     {return maxAge != T_PROP_NULL;};
-  unsigned int getMaxAge()                     {return maxAge;}
-  void         setMaxAge(unsigned int t)       { maxAge = min(maxAge,t);}
-};
-
-class Queue : public Primitive {
-  PacketType type;
-public:
-  Targ_Port *i;
-  Init_Port *o;
-
-  Signal *numItems;
-  unsigned int numItemsMax;
 
 
 
-
-  vector <Slot_Qos*> slotQos;
-  vector <Signal*> qslots;
-  unsigned int depth;
     
-  Queue(Channel *in, Channel *out, unsigned int d, const string n, Hier_Object *p) : Primitive(n,p) {
-    i = new Targ_Port("i",in, this);
-    o = new Init_Port("o",out,this);
+Queue::Queue(Channel *in, Channel *out, unsigned int d, const string n, Hier_Object *p) : Primitive(n,p) {
+  i = new Targ_Port("i",in, this);
+  o = new Init_Port("o",out,this);
 
-    ASSERT (d >= 1); 
-    depth = d;
-    numItemsMax = depth;
+  ASSERT (d >= 1); 
+  depth = d;
+  numItemsMax = depth;
 
-    for (int i = 0; i<depth; i++) 
-      slotQos.push_back (new Slot_Qos() );
-    qslots.resize(depth);
-    type = PACKET_DATA;
-    (*network::n).primitives.push_back(this);
-    (*network::n).queues.push_back(this);
-    // try switching to one-hot encoding for numItems?
-  }
+  for (int i = 0; i<depth; i++) 
+    //      slotQos.push_back (new Slot_Qos() );
+    slotQos.push_back (new Slot_Qos(i,this) );
+  qslots.resize(depth);
+  type = PACKET_DATA;
+  (*network::n).primitives.push_back(this);
+  (*network::n).queues.push_back(this);
+  // try switching to one-hot encoding for numItems?
+}
 
 
-  Queue * setType ( PacketType p) {
-    type = p;
-    return this;
-  }
+Queue * Queue::setType ( PacketType p) {
+  type = p;
+  return this;
+}
 
-  PacketType getPacketType () { return type;}
+PacketType Queue::getPacketType () { return type;}
 
-  void buildPrimitiveLogic ( );
+//void Queue::buildPrimitiveLogic ( );
 
-  void propagateLatencyLemmas( ) {
-    Channel *ichan = i->channel;
-    Channel *ochan = o->channel;
+void Queue::propagateLatencyLemmas( ) {
+  Channel *ichan = i->channel;
+  Channel *ochan = o->channel;
 
-    unsigned int slot_latency = ochan->qos->getTargetResponseBound() + 1;
+  unsigned int slot_latency = ochan->qos->getTargetResponseBound() + 1;
 
-    if (ochan->qos->getTargetResponseBound() == 0) 
-      {
-	numItemsMax = 1; //eager queue should never exceed 1 item
-	for (int i = depth-1; i >= 0; i--) 
-	  { 
-	    //if (slotQos[i]->hasMaxAge())	      
-	    if (ichan->qos->hasAgeBound())	      
-	      slotQos[i]->setMaxAge( 1 + ichan->qos->getAgeBound() );
-	    if (ochan->qos->hasTimeToSinkBound())	      
-	      // 	    if (slotQos[i]->hasTimeToSink())
-	      slotQos[i]->setTimeToSink( 1 + ochan->qos->getTimeToSinkBound() );
-	  }
-      } 
-    else 
-      {
-	for (int i = 0; i<depth; i++) 
-	  {
-	    if (ichan->qos->hasAgeBound())
-	      slotQos[i]->setMaxAge( ichan->qos->getAgeBound()       + slot_latency * (depth-i) );
-	    //	    if (slotQos[i]->hasTimeToSink())
-	    if (ochan->qos->hasTimeToSinkBound())
-	      slotQos[i]->setTimeToSink( ochan->qos->getTimeToSinkBound()  + slot_latency * i );
-	  }
-      }
+  if (ochan->qos->getTargetResponseBound() == 0) 
+    {
+      numItemsMax = 1; //eager queue should never exceed 1 item
+      for (int i = depth-1; i >= 0; i--) 
+	{ 
+	  if (ichan->qos->hasAgeBound())	      
+	    slotQos[i]->setMaxAge( 1 + ichan->qos->getAgeBound() );
+	  if (ochan->qos->hasTimeToSinkBound())	      
+	    slotQos[i]->setTimeToSink( 1 + ochan->qos->getTimeToSinkBound() );
+	}
+    } 
+  else 
+    {
+      for (int i = 0; i<depth; i++) 
+	{
+	  if (ichan->qos->hasAgeBound())
+	    slotQos[i]->setMaxAge( ichan->qos->getAgeBound()       + slot_latency * (depth-i) );
+	  if (ochan->qos->hasTimeToSinkBound())
+	    slotQos[i]->setTimeToSink( ochan->qos->getTimeToSinkBound()  + slot_latency * i );
+	}
+    }
     
-    if (depth == 1) 
-      ichan->qos->updateTargetResponseBound( 1 + ochan->qos->getTargetResponseBound() ); //no simultaneous r/w
-    else 
-      ichan->qos->updateTargetResponseBound( ochan->qos->getTargetResponseBound() );
+  if (depth == 1) 
+    ichan->qos->updateTargetResponseBound( 1 + ochan->qos->getTargetResponseBound() ); //no simultaneous r/w
+  else 
+    ichan->qos->updateTargetResponseBound( ochan->qos->getTargetResponseBound() );
     
-    ichan->qos->updateTimeToSinkBound(  slotQos[depth-1]->getTimeToSink() ); 
-    ochan->qos->updateAgeBound( slotQos[0]->getMaxAge() ); 
+  ichan->qos->updateTimeToSinkBound(  slotQos[depth-1]->getTimeToSink() ); 
+  ochan->qos->updateAgeBound( slotQos[0]->getMaxAge() ); 
 
-    return;
-  }
+  return;
+}
         
-};
-
-
-
-
 
 
 
@@ -827,9 +773,9 @@ void Ckt::buildNetworkLogic(Network *n) {
       maxLatency = max(maxLatency, (*it)->slotQos[i]->getMaxAge() ); 
   wClk = numBitsRequired( max(maxLatency, voptions->getTMax() ) );
       
-  cout << "global latency bound (tMax) is          " << voptions->getTMax() << "\n";
+  cout << "\nglobal latency bound (tMax) is          " << voptions->getTMax() << "\n";
   cout << "largest time from latency lemmas is     " << maxLatency << "\n";
-  cout << "using a clock with                      " << wClk << " bits\n";
+  cout << "clock will use                          " << wClk << " bits\n\n";
 
 
   this->oracleBus = new Oracle_Signal("oracles");
@@ -992,11 +938,9 @@ void Queue::buildPrimitiveLogic ( ) {
   o_trdy               -> setExpr( (new Id_Expr( o->channel->trdy )) -> setWidth(1) );
 
   Signal *readEnable   = (new Signal(name+"readEnable"))
-    //     -> setName(name+"readEnable")
     -> setExpr( new And_Expr(o_irdy, o_trdy));
 
   Signal *writeEnable   = (new Signal(name+"writeEnable"))
-    //     -> setName(name+"writeEnable")
     -> setExpr( new And_Expr(i_irdy, i_trdy));
 
 
@@ -1039,7 +983,6 @@ void Queue::buildPrimitiveLogic ( ) {
   Expr *eq_mod = new Eq_Expr( tail, new Bvconst_Expr(depth-1,wDepth) );
   
   Signal *tail_plus_1 = (new Signal(name+"tailPlus1Mod"))
-    //     -> setName(name+"tail_plus1mod" )
     -> setExpr( (new Case_Expr())		 
 		-> setDefault(expr_tail_plus_1)
 		-> addCase(eq_mod, new Bvconst_Expr(0,wDepth) ) -> setWidth(wDepth)
@@ -1247,47 +1190,48 @@ void Queue::buildPrimitiveLogic ( ) {
 
 
 
+// print the QoS for all the channels and queue slots
+void Network::printQos( ostream &f) 
+{
+  f << "\n===============================================================================\n";
+  f << "Qos Report \n";
+  for (vector <Channel*>::iterator it = (this)->channels.begin(); it != (this)->channels.end(); it++ ) 
+    (*it)->qos->printChannelQos(f);
 
-void Network::addLatencyLemmas() {
+  for (vector <Queue*>::iterator it = (this)->queues.begin(); it != (this)->queues.end(); it++ )
+    for (int i = (*it)->qslots.size()-1 ; i >= 0 ; i--) 
+      (*it)->slotQos[i]->printSlotQos(f);
+  f << "===============================================================================\n";
+  return;
+}
 
-  // assign channels to sink with the bounds from their sinks
+void Network::addLatencyLemmas() 
+{
 
-  // keep track of which channels need to be updated remove from set
-  // when we update it, add to set when someone else schedules for
-  // update     
+  g::outQos.open("dump.qos");
 
-  // ofstream  outfiles::propagation;
-  outfiles::propagation.open("propagation.trace");
-  outfiles::propagation << "\n";
-
-  outfiles::propagation << "INIT ==============================================================\n";
-  for (vector<Channel*>::iterator it = channels.begin(); it != channels.end(); it++) 	
-    //    (*it)->printChannelAssertions(outfiles::propagation);	
-    (*it)->qos->printChannelQos(outfiles::propagation);	
-  outfiles::propagation << "==============================================================\n";
-
-
-  // initially only the sinks need to be updated
+  // initially only the sources/sinks need to be updated with own qos guarantees
   for (vector <Sink*>::iterator it = sinks.begin(); it != sinks.end(); it++ ) 
     (*it)->propagateLatencyLemmas();
-
   for (vector <Source*>::iterator it = sources.begin(); it != sources.end(); it++ ) 
     (*it)->propagateLatencyLemmas();
     
   cout << "after sinks, number updated channels is " << network::n->modifiedChannels.size() << "\n\n";
 
+  // modifiedChannels keeps track of what signals channels need to propagate
+  
   unsigned int cnt = 0;
   while (network::n->modifiedChannels.size() > 0) 
     {
 
-      outfiles::propagation << "\nmodifiedChannels channels list on iter " << itos(cnt) 
-			    << " has size = " << network::n->modifiedChannels.size() << "\n"; 
+      g::outQos << "\n on iter " << cnt
+		<< " modifiedChannels.size = " << network::n->modifiedChannels.size(); 
       for (set<Channel*>::iterator it = network::n->modifiedChannels.begin(); 
 	   it != network::n->modifiedChannels.end(); it++) 
 	{
-	  outfiles::propagation << "\t" << (*it)->name << "\n";
+	  g::outQos << "\n\t" << (*it)->name ;
 	}
-      outfiles::propagation << "\n";
+      g::outQos << "\n";
 
 
       set<Channel*>::const_iterator c  = network::n->modifiedChannels.begin();
@@ -1301,34 +1245,13 @@ void Network::addLatencyLemmas() {
       if (cnt++ >1000) ASSERT(0); 
     }
 
-  outfiles::propagation << "\n\nFINAL==============================================================\n";
-  for (vector<Channel*>::iterator it = channels.begin(); it != channels.end(); it++) 	
-    (*it)->qos->printChannelQos(outfiles::propagation);	
-  outfiles::propagation << "==============================================================\n";
+  printQos(cout);
+  printQos(g::outQos);
   
-
-
-
-
-
-
-  cout << "\nfinished propagating latency properties\n";
-  cout << "\ninferred channel latency properties \n";
-  for (vector <Channel*>::iterator it = (this)->channels.begin(); it != (this)->channels.end(); it++ ) 
-    (*it)->qos->printChannelQos(std::cout);
-  
-  cout << "\ninferred queue latency properties \n";
-  for (vector <Queue*>::iterator it = (this)->queues.begin(); it != (this)->queues.end(); it++ )
-    for (int i = (*it)->qslots.size()-1 ; i >= 0 ; i--) 
-      outfiles::propagation  << "queue: "             << setw(34) << left << (*it)->name
-			     << "  slot: "            << setw(4)  << i 
-			     << "  timeToSinkBound: " << setw(4)  << (*it)->slotQos[i]->getTimeToSink()
-			     << "  ageBound: "        << setw(4)  << (*it)->slotQos[i]->getMaxAge()
-			     << "\n"; 
 
   //  cout << "\ninferred numeric invariant properties \n";
   cout << "\n";
-  outfiles::propagation.close();
+  g::outQos.close();
   return;
 }
 
@@ -1385,12 +1308,10 @@ void Ckt::dumpAsVerilog (string fname) {
   vfile << "input ["+itos(num_oracles-1)+":0] \t oracles; \n";
   vfile << "\n\n";
 
-  //  vfile << "//declaring signals...\n";
   for (vector <Signal*>::iterator it = signals.begin();it != signals.end(); it++ )
     (*it)->declareSignalVerilog(vfile);
   vfile << "\n\n";
 
-  //   vfile << "//assign signals ...\n";    
   for (vector <Signal*>::iterator it = signals.begin();it != signals.end(); it++ )
     (*it)->assignSignalVerilog(vfile);
   vfile << "\n\n";

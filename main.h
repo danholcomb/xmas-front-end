@@ -17,19 +17,38 @@ class Source;
 class Sink;
 class Queue;
 class Verification_Settings;
-
+class Slot_Qos;
 
 using namespace std;
 
 
+// g is just a generic namespace for global vars and instances
+namespace g {
+  ofstream outQos;
+}
+
+
+namespace network { Network *n; }
+namespace logic {  Ckt *c; }
+
+
+//for queues and channels, this indicates whether to consider
+//timestamps or not
+enum PacketType {
+  PACKET_CREDIT,
+  PACKET_DATA
+};
+
 string itos(int i);
+unsigned int numBitsRequired( unsigned int maxval);
+
 
 
 
 
 class Verification_Settings {
   unsigned int tMax;
-public:
+ public:
   bool isEnabledPhiLQueue;
   bool isEnabledPhiGQueue;
   bool isEnabledBoundChannel;
@@ -73,7 +92,7 @@ public:
 
 
 class Ckt {
-public:
+ public:
 
   Verification_Settings *voptions;
   vector<Signal*> signals;
@@ -101,18 +120,6 @@ public:
 
 
 
-namespace network { Network *n; }
-namespace logic {  Ckt *c; }
-
-
-unsigned int numBitsRequired( unsigned int maxval) {
-  unsigned int x = log2(maxval);
-  unsigned int w = x + 2;
-  //cout << "using " << w << " bits for signal with maxval " << maxval << "\n";
-  return w;
-}
-
-
 
 
 class Channel_Qos {
@@ -127,7 +134,14 @@ class Channel_Qos {
   unsigned int ageBound;
   Channel *ch;
 
-public:
+  string printHeader();
+/*  { */
+/*     std::stringstream out; */
+/*     out << "channel: " << setw(16) << ch->name; // << " slot:" << setw(2) << slotIndexInParentQueue ; */
+/*     return out.str(); */
+/*   }; */
+
+ public:
   Channel_Qos(Channel *c);
 
   bool hasTargetResponseBound ();
@@ -159,7 +173,7 @@ public:
 
 
 class Network {
-public:
+ public:
   Network( ) {;}
 
   vector<Channel*>   channels; 
@@ -171,6 +185,7 @@ public:
   // to keep track of propagations
   set <Channel*> modifiedChannels;
 
+  void printQos(ostream &f);
   void printNetwork ();
   void addLatencyLemmas ();
 };
@@ -179,4 +194,120 @@ public:
 
 
 
+
+
+
+
+
+
+
+/*!A Hier Object is anything in the hierarchy that contains 1 or more
+  primitives or composite (e.g. credit loop) objects in its subtree.*/
+class Hier_Object {
+ public:
+  string name; 
+  vector<Hier_Object*> children; 
+    
+  //root not has no name... (to help keep flat names shorter)
+  Hier_Object( );
+  Hier_Object( const string n, Hier_Object *parent);
+  void addChild (Hier_Object *x);
+};
+
+
+
+
+
+
+
+
+
+
+/*! \brief xmas kernel primitive primitives don't have internal
+  channels
+*/
+class Primitive : public Hier_Object {
+ public:
+  vector <Init_Port *> init_ports;
+  vector <Targ_Port *> targ_ports;
+ Primitive(string n, Hier_Object *parent) : Hier_Object(n,parent) { }
+
+  virtual void buildPrimitiveLogic ( ) =0;
+  virtual void propagateLatencyLemmas() {;}
+  void printConnectivity(ostream &f);
+};
+
+
+
+
+
+
+
+
+
+
+class Queue : public Primitive {
+  PacketType type;
+ public:
+  Targ_Port *i;
+  Init_Port *o;
+  Signal *numItems;
+  unsigned int numItemsMax;
+  vector <Slot_Qos*> slotQos;
+  vector <Signal*> qslots;
+  unsigned int depth;
+  Queue(Channel *in, Channel *out, unsigned int d, const string n, Hier_Object *p);
+  Queue * setType ( PacketType p);
+  PacketType getPacketType ();
+  void buildPrimitiveLogic ( );
+  void propagateLatencyLemmas( );        
+};
+
+
+
+
+class Slot_Qos {
+  unsigned int timeToSink;
+  unsigned int maxAge;
+  Queue * parentQueue;
+  unsigned int slotIndexInParentQueue;
+
+  string printHeader() {
+    std::stringstream out;
+    out << "queue: " << setw(16) << parentQueue->name << " slot:" << setw(2) << slotIndexInParentQueue ;
+    return out.str();
+  };
+
+ public:
+  Slot_Qos(unsigned int i, Queue *q) {
+    slotIndexInParentQueue = i;
+    parentQueue = q;
+    timeToSink = T_PROP_NULL;
+    maxAge = T_PROP_NULL;
+  }
+
+  bool         hasTimeToSink()                 {return timeToSink != T_PROP_NULL;};
+  unsigned int getTimeToSink()                 {return timeToSink;};
+  bool         hasMaxAge()                     {return maxAge != T_PROP_NULL;};
+  unsigned int getMaxAge()                     {return maxAge;}
+  void printSlotQos(ostream &f) {
+    f    << printHeader() 
+	 << "  timeToSinkBound: " << setw(3)  << right << getTimeToSink()
+	 << "  ageBound: "        << setw(3)  << right << getMaxAge()
+	 << "\n"; 
+  }
+
+
+  void         setTimeToSink(unsigned int t)   { 
+    timeToSink = min(timeToSink,t);
+    g::outQos << printHeader() << "  set timeToSink to " << maxAge << "\n";
+  }
+
+  void         setMaxAge(unsigned int t)       { 
+    maxAge = min(maxAge,t);
+    g::outQos << printHeader() << "  set maxAge to " << maxAge << "\n";
+  }
+
+
+};
 

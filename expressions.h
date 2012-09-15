@@ -342,7 +342,6 @@ namespace {
   map <string, int> signal_name_counts;
 }
 
-using namespace logic;
 
 
 /*! a signal is a named expression */
