@@ -2,17 +2,9 @@
 
 /* these are all very simple, just letting them be in header*/
 
-using namespace std;
-
-class Expr;
-class Signal;
-class Seq_Signal;
-class Oracle_Signal;
-
-
 class Expr {
   unsigned int width;
-public:
+ public:
 
   Expr(unsigned int w) { setWidth(w); }
   Expr()               { setWidth(0); }
@@ -39,10 +31,10 @@ public:
 class Case_Expr : public Expr {
   Expr *defaultCase;
   vector < pair<Expr*,Expr*> > cases;
-public:
+ public:
 
-  Case_Expr(unsigned int w) : Expr(w) {;}
-  Case_Expr() : Expr() {;}
+ Case_Expr(unsigned int w) : Expr(w) {;}
+ Case_Expr() : Expr() {;}
   
   Case_Expr * setDefault( Expr *r ) { 
     defaultCase = r; 
@@ -86,9 +78,9 @@ public:
 
 class Lt_Expr : public Expr {
   Expr *_a, *_b;
-public:
+ public:
   
-  Lt_Expr( Expr *a, Expr *b) : Expr(1) {
+ Lt_Expr( Expr *a, Expr *b) : Expr(1) {
     _a = a;
     _b = b;
   }
@@ -105,8 +97,8 @@ public:
 class Lte_Expr : public Expr {
   Expr *_a;
   Expr *_b;
-public:
-  Lte_Expr( Expr *a, Expr *b) : Expr(1) {
+ public:
+ Lte_Expr( Expr *a, Expr *b) : Expr(1) {
     _a = a;
     _b = b;
   }
@@ -121,9 +113,9 @@ public:
 
 class And_Expr : public Expr {
   vector <Expr*> _ins;
-public:
-  And_Expr( )                : Expr(1) {;}
-  And_Expr(Expr *a, Expr *b) : Expr(1) {
+ public:
+ And_Expr( )                : Expr(1) {;}
+ And_Expr(Expr *a, Expr *b) : Expr(1) {
     addInput(a);
     addInput(b);
   }
@@ -149,14 +141,14 @@ public:
 
 class Or_Expr : public Expr {
   vector <Expr*> _ins;
-public:
+ public:
   
-  Or_Expr( )                : Expr(1) {;}
-  Or_Expr(Expr *a, Expr *b) : Expr(1) {
+ Or_Expr( )                : Expr(1) {;}
+ Or_Expr(Expr *a, Expr *b) : Expr(1) {
     addInput(a);
     addInput(b);
   }
-  Or_Expr(Expr *a, Expr *b, Expr *c) : Expr(1) {
+ Or_Expr(Expr *a, Expr *b, Expr *c) : Expr(1) {
     addInput(a);
     addInput(b);
     addInput(c);
@@ -184,8 +176,8 @@ public:
 
 class Eq_Expr : public Expr {
   Expr *a, *b;
-public:
-  Eq_Expr(Expr *ea, Expr *eb ) : Expr(1) {
+ public:
+ Eq_Expr(Expr *ea, Expr *eb ) : Expr(1) {
     a = ea;
     b = eb;
   }
@@ -201,12 +193,12 @@ public:
 
 class Bvadd_Expr : public Expr {
   Expr *_a, *_b;
-public:
-  Bvadd_Expr(unsigned int w, Expr *a, Expr *b ) : Expr(w) {
+ public:
+ Bvadd_Expr(unsigned int w, Expr *a, Expr *b ) : Expr(w) {
     _a = a;
     _b = b;
   }
-  Bvadd_Expr(Expr *a, Expr *b ) : Expr() {
+ Bvadd_Expr(Expr *a, Expr *b ) : Expr() {
     ASSERT(a->getWidth() > 0);
     ASSERT(b->getWidth() > 0);
     ASSERT(a->getWidth() == b->getWidth());
@@ -225,12 +217,12 @@ public:
 
 class Bvsub_Expr : public Expr {
   Expr *_a, *_b;
-public:
-  Bvsub_Expr(unsigned int w, Expr *a, Expr *b ) : Expr(w) {
+ public:
+ Bvsub_Expr(unsigned int w, Expr *a, Expr *b ) : Expr(w) {
     _a = a;
     _b = b;
   }
-  Bvsub_Expr( Expr *a, Expr *b ) : Expr() {
+ Bvsub_Expr( Expr *a, Expr *b ) : Expr() {
     _a = a;
     _b = b;
   }
@@ -246,8 +238,8 @@ public:
 
 class Not_Expr : public Expr {
   Expr *_a;
-public:
-  Not_Expr(Expr *a ) : Expr(1) {
+ public:
+ Not_Expr(Expr *a ) : Expr(1) {
     _a = a;
   }
 
@@ -261,11 +253,11 @@ public:
 
 class Id_Expr : public Expr {
   Expr *_a;
-public:
-  Id_Expr(unsigned int w, Expr *a ) : Expr(w) {
+ public:
+ Id_Expr(unsigned int w, Expr *a ) : Expr(w) {
     _a = a;
   }
-  Id_Expr(Expr *a ) : Expr() {
+ Id_Expr(Expr *a ) : Expr() {
     _a = a;
   }
 
@@ -277,14 +269,14 @@ public:
 };
 
 class Bvconst_Expr : public Expr {
-public:
+ public:
   unsigned int value;
 
-  Bvconst_Expr( unsigned int v , unsigned int w ) : Expr(w) {
+ Bvconst_Expr( unsigned int v , unsigned int w ) : Expr(w) {
     value = v;
   }
 
-  Bvconst_Expr(unsigned int v) : Expr() {
+ Bvconst_Expr(unsigned int v) : Expr() {
     value = v;
   }
 
@@ -305,8 +297,8 @@ class Extract_Expr : public Expr {
   Expr *in;
   unsigned int msb;
   unsigned int lsb;
-public:
-  Extract_Expr(Expr *e, unsigned int m, unsigned int l) : Expr(m-l+1) {
+ public:
+ Extract_Expr(Expr *e, unsigned int m, unsigned int l) : Expr(m-l+1) {
     in = e;
     lsb = l;
     msb = m;
@@ -322,8 +314,8 @@ public:
 class Cat_Expr : public Expr {
   Expr *upperBits;
   Expr *lowerBits;
-public:
-  Cat_Expr(Expr *u, Expr *l) : Expr(u->getWidth() + l->getWidth()) {
+ public:
+ Cat_Expr(Expr *u, Expr *l) : Expr(u->getWidth() + l->getWidth()) {
     upperBits = u;
     lowerBits = l;
   }
@@ -343,3 +335,160 @@ public:
 
 
 
+
+
+
+namespace {
+  map <string, int> signal_name_counts;
+}
+
+using namespace logic;
+
+
+/*! a signal is a named expression */
+class Signal : public Expr {
+  bool isAsserted;
+  Expr *_e;
+  bool _hasExpr; // not counting the null expr from constructor
+ public:
+  string name;
+
+
+  // add a new signal to the ckt
+  // width defaults to 1 if not provided;
+  // name defaults to "gen" if not provided
+
+ Signal( string n ) : Expr() {  
+    setName(n);
+    isAsserted = false;
+    logic::c->signals.push_back(this);
+    _e = new Expr();
+  };
+ Signal(  ) : Expr() {      
+    setName("generic");
+    isAsserted = false;
+    logic::c->signals.push_back(this);
+    _e = new Expr();
+  };
+
+
+  Signal * setExpr(Expr *e) {
+    _e = e;
+    _hasExpr = true;
+    return this;
+  }
+
+  void assertSignalTrue() {
+    ASSERT2(getWidth() == 1, "asserted signals must be boolean");
+    cout << "asserting\t" << name << "\n"; 
+    isAsserted = true;
+  }
+
+  Signal * setName( string n ) {
+    // if multiple signals created with same name, rename them for uniqueness
+    int name_count = signal_name_counts[n]++; 
+    if (name_count > 0) 
+      n += "_DUP"+itos(name_count);
+    name = n;
+    return this;
+  }
+
+  bool hasExpr() {return _hasExpr; }
+
+  string getName() {  return name; }
+
+  unsigned int getWidth() {  return _e->getWidth(); }
+
+  Signal * setWidth(unsigned int w) { 
+    _e->setWidth(w);
+    return this;
+  }
+
+
+  // this gets called when this signal is used as operand in other expr
+  string printExprVerilog() {
+    return " "+name+" "; 
+  }
+
+
+  virtual void declareSignalVerilog(ostream &f) {
+    ASSERT2(_e->getWidth()>0, "width==0 for signal "+getName() );
+    if (getWidth() == 1)
+      f << setw(15) << left << "wire "                       << name << ";\n";
+    else 
+      f << setw(15) << left << "wire ["+itos(_e->getWidth()-1)+":0] " << name << ";\n";; 
+    return;
+  }
+
+
+  virtual void assignSignalVerilog(ostream &f) {
+    ASSERT(_e != 0);
+    ASSERT2(_e->getWidth()>0, "width==0 for signal "+getName() );
+    ASSERT(hasExpr()); 
+    f << "assign " << setw(25) << left << name << " = " ;
+    f << _e -> printExprVerilog() << ";\n";
+    
+    if (isAsserted) {
+      ASSERT2(_e->getWidth()==1, "asserted signal is not boolean");
+      f << "xmas_assert assert_"+name+"(clk, reset, "+name+" );\n";
+    }
+    return; 
+  };
+
+
+};
+
+
+
+
+class Seq_Signal : public Signal {
+  Expr *resetval;
+  Expr *nxt;
+ public:
+
+ Seq_Signal(string n) : Signal(n ) {
+    resetval = new Expr();
+    nxt = new Expr();    
+  }
+  
+  Seq_Signal * setResetExpr( Expr *e ) { resetval = e; return this; };
+  Seq_Signal * setNxtExpr( Expr *e ) { nxt = e; return this; };
+  unsigned int getWidth()    { return resetval->getWidth(); }
+  Seq_Signal * setWidth(unsigned int w) { resetval->setWidth(w); return this; }
+
+  string printExprVerilog() { return " "+name+" ";}
+
+  void declareSignalVerilog(ostream &f) {
+    unsigned int w = resetval->getWidth();
+    ASSERT2(w>0, "width==0 for signal "+getName() );
+    ASSERT2(w == nxt->getWidth(), "mismatch in sequential reset:"+itos(w)+" nxt:"+itos(nxt->getWidth())+getName());
+    if (w == 1)
+      f << setw(15) << left << "reg "                   << name << ";\n";
+    else 
+      f << setw(15) << left << "reg ["+itos(w-1)+":0] " << name << ";\n"; 
+    return;
+  }
+
+  void assignSignalVerilog(ostream & f) {
+    f << "always @(posedge clk)\n\t"  << name << " <= (reset) ?  "
+      << resetval->printExprVerilog()
+      << " : "
+      << nxt->printExprVerilog()
+      <<";\n";
+    return;
+  };
+};
+
+
+
+
+class Oracle_Signal : public Signal {
+ public:
+  unsigned int width;
+ Oracle_Signal(string n) : Signal(n) { width = 0; }
+  unsigned int getWidth() { return width; }
+  void widen(unsigned int w) {  width += w; }
+  string printExprVerilog() { return " "+name+" ";}
+  void declareSignalVerilog(ostream &f) { return ;}
+  void assignSignalVerilog(ostream &f) { return;}
+};
