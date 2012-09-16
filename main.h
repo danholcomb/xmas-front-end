@@ -22,6 +22,7 @@ class Slot_Qos;
 using namespace std;
 
 
+
 // g is just a generic namespace for global vars and instances
 namespace g {
   ofstream outQos;
@@ -63,8 +64,13 @@ class Verification_Settings {
     isEnabledBoundChannel   = true;
     isEnabledPsi   = true;
     isEnabledPersistance = true;
-    tMax = 50;
+    tMax = 20;
   };
+
+  void  enablePhiLQueue() { isEnabledPhiLQueue = true;}
+  void disablePhiLQueue() { isEnabledPhiLQueue = false;}
+  void  enablePsi() { isEnabledPsi = true;}
+  void disablePsi() { isEnabledPsi = false;}
 
   void setTMax( unsigned int t) {
     tMax = t;
@@ -135,11 +141,6 @@ class Channel_Qos {
   Channel *ch;
 
   string printHeader();
-/*  { */
-/*     std::stringstream out; */
-/*     out << "channel: " << setw(16) << ch->name; // << " slot:" << setw(2) << slotIndexInParentQueue ; */
-/*     return out.str(); */
-/*   }; */
 
  public:
   Channel_Qos(Channel *c);

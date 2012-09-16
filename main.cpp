@@ -76,16 +76,16 @@ unsigned int numBitsRequired( unsigned int maxval) {
 
 
 void aImpliesBoundedFutureB( Expr * a, Expr * b, unsigned int t, string name);
-
+ 
 
 
 //root not has no name... (to help keep flat names shorter)
 Hier_Object::Hier_Object( ) {
-    name = "";        
-  };
+  name = "";        
+};
 Hier_Object::Hier_Object( const string n, Hier_Object *parent) {
-    name = parent->name + n + HIER_SEPARATOR;
-    parent->addChild(this);
+  name = parent->name + n + HIER_SEPARATOR;
+  parent->addChild(this);
 };
 
 void Hier_Object::addChild (Hier_Object *x) { children.push_back(x); }
@@ -236,10 +236,10 @@ public:
 
 
 string Channel_Qos::printHeader() {
-    std::stringstream out;
-    out << "channel: " << setw(16) << ch->name; 
-    return out.str();
-  };
+  std::stringstream out;
+  out << "channel: " << setw(16) << ch->name; 
+  return out.str();
+};
 
 
 Channel_Qos::Channel_Qos(Channel *c) {
@@ -286,40 +286,40 @@ unsigned int Channel_Qos::getAgeBound ()                { return ageBound       
 void Channel_Qos::updateTargetResponseBound( unsigned int b) {
   if (b < targetResponseBound) 
     {
-    targetResponseBound = b;
-    g::outQos << printHeader() << " updated targetResponseBound to: " << targetResponseBound << "\n";
-    network::n->modifiedChannels.insert(ch);
-  } 
+      targetResponseBound = b;
+      g::outQos << printHeader() << " updated targetResponseBound to: " << targetResponseBound << "\n";
+      network::n->modifiedChannels.insert(ch);
+    } 
   return;
 };
 
 void Channel_Qos::updateInitiatorResponseBound( unsigned int b) {
   if (b < initiatorResponseBound) 
     {
-    initiatorResponseBound = b;
-    g::outQos << printHeader() << " updated initiatorResponseBound to: " << initiatorResponseBound << "\n";
-    network::n->modifiedChannels.insert(ch);
-  } 
+      initiatorResponseBound = b;
+      g::outQos << printHeader() << " updated initiatorResponseBound to: " << initiatorResponseBound << "\n";
+      network::n->modifiedChannels.insert(ch);
+    } 
   return;
 };
 
 void Channel_Qos::updateTargetBound( unsigned int b) {
   if (b < targetBound) 
     {
-    targetBound = b;
-    g::outQos << printHeader() << " updated targetBound to: " << targetBound << "\n";
-    network::n->modifiedChannels.insert(ch);
-  } 
+      targetBound = b;
+      g::outQos << printHeader() << " updated targetBound to: " << targetBound << "\n";
+      network::n->modifiedChannels.insert(ch);
+    } 
   return;
 };
 
 void Channel_Qos::updateInitiatorBound( unsigned int b) {
   if (b < initiatorBound) 
     {
-    initiatorBound = b;
-    g::outQos << printHeader() << " updated initiatorBound to: " << initiatorBound << "\n";
-    network::n->modifiedChannels.insert(ch);
-  } 
+      initiatorBound = b;
+      g::outQos << printHeader() << " updated initiatorBound to: " << initiatorBound << "\n";
+      network::n->modifiedChannels.insert(ch);
+    } 
   return;
 };
 
@@ -2110,19 +2110,28 @@ int main (int argc, char **argv)
   string network = "ex_queue";
   string fnameOut = "dump.v";
 
-  std::cout << argv[0];
-  for (int i = 1; i < argc; i++) { 
-    if (i + 1 != argc) 
-      if (string(argv[i]) == "--t_max") {	logic::c->voptions->setTMax( atoi(argv[i+1]) );
-      } else if (string(argv[i]) == "--network") {	network = argv[i+1];
-      } else if (string(argv[i]) == "--dump") {	fnameOut = argv[i+1];
-      } else if (argv[i] == "-p") {
-	;
-      } else {
-      }
-    std::cout << argv[i] << " ";
-  }
 
+  std::cout << argv[0];
+  for (int i = 1; i < argc; i++) 
+    { 
+      string s = string(argv[i]);
+      cout << "\nparsing arg: " << argv[i] << "\n";
+
+      if        ( s == "--dump")    { fnameOut = argv[++i];
+      } else if ( s == "--network") { network  = argv[++i];
+      } else if ( s == "--t_max")          { logic::c->voptions->setTMax( atoi(argv[++i]) );
+      } else if ( s == "--enable_lemmas")  { logic::c->voptions->enablePhiLQueue();
+      } else if ( s == "--disable_lemmas") { logic::c->voptions->disablePhiLQueue();
+      } else if ( s == "--enable_psi")     { logic::c->voptions->enablePsi() ;
+      } else if ( s == "--disable_psi")    { logic::c->voptions->disablePsi(); 
+      } else {
+	ASSERT2(0,"cmd line argument "+s+" is not understood\n");
+      }
+    }
+
+  logic::c -> voptions->printSettings();
+
+  cout << "\n\nnetwork = " << network << "\n";
   network::n = new Network();
 
 
@@ -2130,15 +2139,14 @@ int main (int argc, char **argv)
   // network is within this null root because every object must be
   // contained within one
   Composite *hier_root = new Composite();
-  Composite *t;
-  if      (network == "credit_loop")        { t = new Credit_Loop(     "top",hier_root ); } 
-  else if (network == "ex_tree")            { t = new Ex_Tree(         "top",hier_root ); } 
-  else if (network == "ex_tree0")           { t = new Ex_Tree0(        "top",hier_root ); } 
-  else if (network == "ex_tree1")           { t = new Ex_Tree1(        "top",hier_root ); } 
-  else if (network == "ex_queue")           { t = new Ex_Queue(        "top",hier_root ); } 
-  else if (network == "ex_queue_chain")     { t = new Ex_Queue_Chain(  "top",hier_root ); } 
-  else if (network == "ex_join")            { t = new Ex_Join(         "top",hier_root ); } 
-  else if (network == "ex_fork")            { t = new Ex_Fork(         "top",hier_root ); } 
+  if      (network == "credit_loop")        {  new Credit_Loop(     "top",hier_root ); } 
+  else if (network == "ex_tree")            {  new Ex_Tree(         "top",hier_root ); } 
+  else if (network == "ex_tree0")           {  new Ex_Tree0(        "top",hier_root ); } 
+  else if (network == "ex_tree1")           {  new Ex_Tree1(        "top",hier_root ); } 
+  else if (network == "ex_queue")           {  new Ex_Queue(        "top",hier_root ); } 
+  else if (network == "ex_queue_chain")     {  new Ex_Queue_Chain(  "top",hier_root ); } 
+  else if (network == "ex_join")            {  new Ex_Join(         "top",hier_root ); } 
+  else if (network == "ex_fork")            {  new Ex_Fork(         "top",hier_root ); } 
   else {  ASSERT(0);  }
 
 
