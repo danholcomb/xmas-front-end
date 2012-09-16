@@ -216,18 +216,14 @@ public:
 
     if ( qos->hasInitiatorResponseBound() & logic::c->voptions->isEnabledResponseBoundChannel) 
       {
-	aImpliesBoundedFutureB(irdy, trdy, qos->getTargetResponseBound(), name+"TRBB");
+	aImpliesBoundedFutureB(trdy, irdy, qos->getInitiatorResponseBound(), name+"IRB");
       }
 
     if ( qos->hasInitiatorBound() & logic::c->voptions->isEnabledBoundChannel ) 
       {
-	aImpliesBoundedFutureB(bvtrue, trdy, qos->getTargetBound(), name+"TBB");
+	aImpliesBoundedFutureB(bvtrue, irdy, qos->getInitiatorBound(), name+"IB");
       }
     // need to add same for initiatiors
-
-
-
-
 
     return;
   }
@@ -2130,7 +2126,7 @@ public:
 class Ex_Queue : public Composite {
 public:
   Ex_Queue(string n, Hier_Object *p) : Composite(n,p) {
-    int queue_size = 2;
+    int queue_size = 4;
     int lb_sink = 2; 
     
     //    Channel *a = new Channel("a",10,this);
@@ -2164,12 +2160,17 @@ public:
     Channel *b = new Channel("b",10,this);
     Channel *c = new Channel("c",10,this);
     Channel *d = new Channel("d",10,this);
+    a->setPacketType(PACKET_DATA);
+    b->setPacketType(PACKET_DATA);
+    c->setPacketType(PACKET_DATA);
+    d->setPacketType(PACKET_DATA);
                 
     Source *src_a = new Source(a,"src_a",this);
 
     new Queue(a,b,2,"q1",this);
     new Queue(b,c,2,"q2",this);
     new Queue(c,d,2,"q3",this);
+    
 
     Sink *sink_x = new Sink(d,"sink_x",this);
     (sink_x)->setTypeBoundedResponse(1);
@@ -2187,7 +2188,7 @@ int main (int argc, char **argv)
   logic::c = new Ckt();
 
   //string network = "ex_tree";
-  string network = "ex_queue";
+  string network = "ex_queue_chain";
   string fnameOut = "dump.v";
 
 
