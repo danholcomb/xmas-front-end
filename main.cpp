@@ -723,7 +723,6 @@ Queue::Queue(Channel *in, Channel *out, unsigned int d, const string n, Hier_Obj
   numItemsMax = depth;
 
   for (int i = 0; i<depth; i++) 
-    //      slotQos.push_back (new Slot_Qos() );
     slotQos.push_back (new Slot_Qos(i,this) );
   qslots.resize(depth);
   type = PACKET_DATA;
@@ -801,155 +800,6 @@ void Queue::propagateLatencyLemmas( ) {
 
 
 
-
-
-void Ckt::buildNetworkLogic(Network *n) {
-
-
-  // infer how many bits are needed for the clock 
-  unsigned int maxLatency = 0;
-  for (vector <Queue*>::iterator it = n->queues.begin(); it != n->queues.end(); it++ ) 
-    for (int i = (*it)->qslots.size()-1 ; i >= 0 ; i--) 
-      maxLatency = max(maxLatency, (*it)->slotQos[i]->getMaxAge() ); 
-  wClk = numBitsRequired( max(maxLatency, voptions->getTMax() ) );
-      
-  cout << "\nglobal latency bound (tMax) is          " << voptions->getTMax() << "\n";
-  cout << "largest time from latency lemmas is     " << maxLatency << "\n";
-  cout << "clock will use                          " << wClk << " bits\n\n";
-
-
-  this->oracleBus = new Oracle_Signal("oracles");
-  this->tCurrent = new Seq_Signal("tCurrent");
-
-  Signal *tCurrentNxt = (new Signal("tCurrentNxt"));
-  tCurrent->setWidth(wClk);
-  tCurrentNxt->setWidth(wClk);
-
-
-
-  tCurrent 
-    -> setResetExpr( (new Bvconst_Expr(0,wClk ))->setWidth(wClk) )
-    -> setNxtExpr( tCurrentNxt );
-
-  Expr *e = ( new Bvadd_Expr( tCurrent , new Bvconst_Expr(1,wClk) )) 
-    -> setWidth(wClk);
-  
-  tCurrentNxt
-    -> setExpr( e );
-  
-  for (vector <Channel*>::iterator it = n->channels.begin(); it != n->channels.end(); it++ )
-    (*it)->buildChannelLogic();
-
-  for (vector <Primitive*>::iterator it = n->primitives.begin(); it != n->primitives.end(); it++ )
-    (*it)->buildPrimitiveLogic();
-
- 
-  return;
-};
-
-
-
-
-
-
-
-
-// a macro that add logic to ckt in order to check property
-void aImpliesBoundedFutureB( Expr * a, Expr * b, unsigned int t, string name) {
-
-  Signal *propertyViolated = intervalMonitor(a, b, t, name);
-
-  Signal *propertyValid = (new Signal(name+"Valid"))
-    -> setExpr ( new Not_Expr( propertyViolated ));
-
-  propertyValid -> assertSignalTrue();
-
-  return;
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// returns expression for tCurrent - in, modulo max value of circular counter
-Expr * AgeOfExpr (Expr *in) {
-
-  unsigned int w = logic::c->wClk;
-   
-  // if clk = 0 and injection = 111...1, then age s/b 1. for rollover
-  // in case 2, do (111...1 - injection + 1) so as not to use any
-  // numbers exceeding 111...1
-  double maxval = pow(double(2),double(w))-1;
-
-  Expr *age_normal = new Bvsub_Expr(w, logic::c->tCurrent, in);
-  Expr *overflow = new Lt_Expr( logic::c->tCurrent , in);
-  Expr *x  = new Bvsub_Expr(w, new Bvconst_Expr(maxval,w), in);
-  Expr *y = new Bvadd_Expr(w, new Bvconst_Expr(1,w) , x);
-  Expr *age_overflow = new Bvadd_Expr(w,  logic::c->tCurrent , y );
-  Expr *age = (new Case_Expr(w))
-    -> setDefault(age_normal)
-    -> addCase(overflow, age_overflow);
-
-  return age;
-};
-
-
-// returns expression for (a - b) % maxval
-Expr * BvsubExprModM (Expr *a, Expr *b , unsigned int maxval, string name) {
-
-  unsigned int w = a->getWidth();
-  ASSERT(w == b->getWidth());
-  //logic::c->wClk;
-   
-  // if clk = 0 and injection = 111...1, then age s/b 1. for rollover
-  // in case 2, do (111...1 - injection + 1) so as not to use any
-  // numbers exceeding 111...1
-  //  double maxval = pow(double(2),double(w))-1;
-
-  Expr *diff_normal = new Bvsub_Expr(w, a, b);
-  Expr *overflow = new Lt_Expr( a , b);
-  Expr *x  = new Bvsub_Expr(w, new Bvconst_Expr(maxval,w), b);
-  Expr *y = new Bvadd_Expr(w, new Bvconst_Expr(1,w) , x);
-  Expr *diff_overflow = new Bvadd_Expr(w,  a , y );
-  Expr *diff = (new Case_Expr(w))
-    -> setDefault(diff_normal)
-    -> addCase(overflow, diff_overflow);
-
-  return diff;
-};
-
-// returns expression for (a+1) % maxval
-Signal * BvIncrExprModM (Expr *a, unsigned int m, string name) {
-
-  unsigned int w = a->getWidth();
-  ASSERT(w >= numBitsRequired(m));
-
-  Expr *rollover = new Eq_Expr( a , new Bvconst_Expr(m-1,w) );
-  Expr *plus1 = new Bvadd_Expr(w, a , new Bvconst_Expr(1,w));  
-  
-  Signal *incrModM = (new Signal(name+"incrModM"))
-    -> setExpr( (new Case_Expr())		 
-		-> setDefault(plus1)
-		-> addCase(rollover, new Bvconst_Expr(0,w) ) -> setWidth(w)
-		);
-
-
-  return incrModM;
-};
-
-
-
-
-
 void Queue::buildPrimitiveLogic ( ) {
 
 
@@ -959,7 +809,10 @@ void Queue::buildPrimitiveLogic ( ) {
   ASSERT( getPacketType() == o->channel->getPacketType() );
   ASSERT( depth == qslots.size() );
 
-  unsigned int wDepth = numBitsRequired(depth); 
+  unsigned int physicalDepth = depth+1; 
+
+
+  unsigned int wDepth = numBitsRequired(physicalDepth); 
   unsigned int wPacket = i->channel->getDataWidth();
   pair <unsigned int,unsigned int> tBits; //which bits hold timestamp
 
@@ -1059,7 +912,7 @@ void Queue::buildPrimitiveLogic ( ) {
 // 		-> addCase(eq_mod, new Bvconst_Expr(0,wDepth) ) -> setWidth(wDepth)
 
 // 		);
-  Signal *tail_plus_1 = BvIncrExprModM(tail, depth, name);
+  Signal *tail_plus_1 = BvIncrExprModM(tail, physicalDepth, name);
   
 
 
@@ -1090,7 +943,7 @@ void Queue::buildPrimitiveLogic ( ) {
 // 		-> setWidth(wDepth)
 // 		);
 
-  Signal *head_plus_1 = BvIncrExprModM(head, depth, name+"headPlus1ModM");
+  Signal *head_plus_1 = BvIncrExprModM(head, physicalDepth, name+"headPlus1ModM");
 
 
   nxt_head 
@@ -1111,8 +964,8 @@ void Queue::buildPrimitiveLogic ( ) {
     -> setExpr( new Bvconst_Expr(0,wPacket) );
                                           
 
-  vector <Seq_Signal *> bslots (depth);
-  for (unsigned int i = 0; i<depth; i++) 
+  vector <Seq_Signal *> bslots (physicalDepth);
+  for (unsigned int i = 0; i<physicalDepth; i++) 
     {
       bslots[i] = new Seq_Signal(name+"bslot"+itos(i));
       bslots[i] ->setWidth(wPacket);
@@ -1120,9 +973,8 @@ void Queue::buildPrimitiveLogic ( ) {
       Signal *nxt_buffer      = (new Signal())
 	-> setName(name+"bslot"+itos(i)+"nxt");
 
-      Signal *bvi = (new Signal()) 
-	-> setName( name+"const"+itos(i) )
-	-> setExpr( (new Bvconst_Expr(i)) -> setWidth(wDepth) );
+      Signal *bvi = (new Signal(name+"const"+itos(i))) 
+	-> setExpr( (new Bvconst_Expr(i,wDepth)) );
 
       Signal *is_tail = (new Signal())
 	-> setName(name+"bslot"+itos(i)+"is_tail")
@@ -1136,8 +988,7 @@ void Queue::buildPrimitiveLogic ( ) {
 		    -> addInput (is_tail)
 		    );
              
-      Signal *is_head = (new Signal())
-	-> setName( name+"bslot"+itos(i)+"is_head" )
+      Signal *is_head = (new Signal(name+"bslot"+itos(i)+"is_head") )
 	-> setExpr( new Eq_Expr(bvi, head) );
 
 
@@ -1169,10 +1020,12 @@ void Queue::buildPrimitiveLogic ( ) {
       e -> setWidth(wDepth);
       e -> setDefault(bvc_null_pkt);
       
-      for (unsigned int b = 0; b<depth; b++) 
+      //      for (unsigned int b = 0; b<depth; b++) 
+      for (unsigned int b = 0; b<physicalDepth; b++) 
 	{
 	  // b_eq_q means: should the bth slot in circular buffer map to the qth slot in fifo queue
-	  unsigned int hpos = (depth+b-q)%depth; //slot q maps to slot b when head=hpos            
+	  //unsigned int hpos = (depth+b-q)%physicalDepth; //slot q maps to slot b when head=hpos            
+	  unsigned int hpos = (physicalDepth+b-q)%physicalDepth; //slot q maps to slot b when head=hpos            
 	  Expr * q_eq_b = new Eq_Expr(head, new Bvconst_Expr(hpos,wDepth));
 	  e -> addCase(q_eq_b, bslots[b]);
 	}
@@ -1184,6 +1037,9 @@ void Queue::buildPrimitiveLogic ( ) {
 
   if (logic::c->voptions->isEnabledPsi) 
     {
+      
+
+
       Signal *numItemsValid = (new Signal())
 	-> setName( name+"numItemsValid" )
 	-> setExpr( new Lte_Expr( 
@@ -1196,7 +1052,8 @@ void Queue::buildPrimitiveLogic ( ) {
       // need to handle ambigious case where head and tail point to same thing
       Signal *headTailDistance = (new Signal())
 	-> setName( name+"headTailDistance" )
-	-> setExpr( BvsubExprModM( tail, head, depth-1, name+"headTailDistance") );
+	-> setExpr( BvsubExprModM( tail, head, physicalDepth-1, name+"headTailDistance") );
+      //	-> setExpr( BvsubExprModM( tail, head, depth-1, name+"headTailDistance") );
       
       Signal *headTailDistanceValid = (new Signal(name+"headTailDistanceValid"))
 	-> setExpr( new Eq_Expr(headTailDistance, numItems));
@@ -1282,6 +1139,165 @@ void Queue::buildPrimitiveLogic ( ) {
   
   return;
 }
+
+
+
+
+
+
+void Ckt::buildNetworkLogic(Network *n) {
+
+
+  // infer how many bits are needed for the clock 
+  unsigned int maxLatency = 0;
+  for (vector <Queue*>::iterator it = n->queues.begin(); it != n->queues.end(); it++ ) 
+    for (int i = (*it)->qslots.size()-1 ; i >= 0 ; i--) 
+      maxLatency = max(maxLatency, (*it)->slotQos[i]->getMaxAge() ); 
+  wClk = numBitsRequired( max(maxLatency, voptions->getTMax() ) );
+      
+  cout << "\nglobal latency bound (tMax) is          " << voptions->getTMax() << "\n";
+  cout << "largest time from latency lemmas is     " << maxLatency << "\n";
+  cout << "clock will use                          " << wClk << " bits\n\n";
+
+
+  this->oracleBus = new Oracle_Signal("oracles");
+  this->tCurrent = new Seq_Signal("tCurrent");
+
+  Signal *tCurrentNxt = (new Signal("tCurrentNxt"));
+  tCurrent->setWidth(wClk);
+  tCurrentNxt->setWidth(wClk);
+
+
+
+  tCurrent 
+    -> setResetExpr( (new Bvconst_Expr(0,wClk ))->setWidth(wClk) )
+    -> setNxtExpr( tCurrentNxt );
+
+  Expr *e = ( new Bvadd_Expr( tCurrent , new Bvconst_Expr(1,wClk) )) 
+    -> setWidth(wClk);
+  
+  tCurrentNxt
+    -> setExpr( e );
+  
+  for (vector <Channel*>::iterator it = n->channels.begin(); it != n->channels.end(); it++ )
+    (*it)->buildChannelLogic();
+
+  for (vector <Primitive*>::iterator it = n->primitives.begin(); it != n->primitives.end(); it++ )
+    (*it)->buildPrimitiveLogic();
+
+ 
+  return;
+};
+
+
+
+
+
+
+
+
+// a macro that add logic to ckt in order to check property
+void aImpliesBoundedFutureB( Expr * a, Expr * b, unsigned int t, string name) {
+
+  Signal *propertyViolated = intervalMonitor(a, b, t, name);
+
+  Signal *propertyValid = (new Signal(name+"Valid"))
+    -> setExpr ( new Not_Expr( propertyViolated ));
+
+  propertyValid -> assertSignalTrue();
+
+  return;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// returns expression for tCurrent - in, modulo max value of circular counter
+Expr * AgeOfExpr (Expr *in) {
+  ASSERT(0);
+  unsigned int w = logic::c->wClk;
+   
+  // if clk = 0 and injection = 111...1, then age s/b 1. for rollover
+  // in case 2, do (111...1 - injection + 1) so as not to use any
+  // numbers exceeding 111...1
+  double maxval = pow(double(2),double(w))-1;
+
+  Expr *age_normal = new Bvsub_Expr(w, logic::c->tCurrent, in);
+  Expr *overflow = new Lt_Expr( logic::c->tCurrent , in);
+  Expr *x  = new Bvsub_Expr(w, new Bvconst_Expr(maxval,w), in);
+  Expr *y = new Bvadd_Expr(w, new Bvconst_Expr(1,w) , x);
+  Expr *age_overflow = new Bvadd_Expr(w,  logic::c->tCurrent , y );
+  Expr *age = (new Case_Expr(w))
+    -> setDefault(age_normal)
+    -> addCase(overflow, age_overflow);
+
+  return age;
+};
+
+
+// returns expression for (a - b) % maxval
+Expr * BvsubExprModM (Expr *a, Expr *b , unsigned int maxval, string name) {
+
+  unsigned int w = a->getWidth();
+  ASSERT(w == b->getWidth());
+  //logic::c->wClk;
+   
+  // if clk = 0 and injection = 111...1, then age s/b 1. for rollover
+  // in case 2, do (111...1 - injection + 1) so as not to use any
+  // numbers exceeding 111...1
+  //  double maxval = pow(double(2),double(w))-1;
+
+  Expr *diff_normal = new Bvsub_Expr(w, a, b);
+  Expr *overflow = new Lt_Expr( a , b);
+  Expr *x  = new Bvsub_Expr(w, new Bvconst_Expr(maxval,w), b);
+  Expr *y = new Bvadd_Expr(w, new Bvconst_Expr(1,w) , x);
+  Expr *diff_overflow = new Bvadd_Expr(w,  a , y );
+  Expr *diff = (new Case_Expr(w))
+    -> setDefault(diff_normal)
+    -> addCase(overflow, diff_overflow);
+
+  return diff;
+};
+
+// returns expression for (a+1) % maxval
+Signal * BvIncrExprModM (Expr *a, unsigned int m, string name) {
+
+  unsigned int w = a->getWidth();
+  ASSERT(w >= numBitsRequired(m));
+
+  // this is needed to rule bad states in induction
+  Signal *withinRange = (new Signal(name+"withinRange"))
+    -> setExpr( new Lt_Expr (a, new Bvconst_Expr(m,w)));
+  withinRange->assertSignalTrue();
+		
+
+
+  Expr *rollover = new Eq_Expr( a , new Bvconst_Expr(m-1,w) );
+  Expr *plus1 = new Bvadd_Expr(w, a , new Bvconst_Expr(1,w));  
+  
+  Signal *incrModM = (new Signal(name+"incrModM"))
+    -> setExpr( (new Case_Expr())		 
+		-> setDefault(plus1)
+		-> addCase(rollover, new Bvconst_Expr(0,w) ) -> setWidth(w)
+		);
+
+
+  return incrModM;
+};
+
+
+
+
 
 
 
@@ -2148,7 +2164,7 @@ public:
 class Ex_Queue : public Composite {
 public:
   Ex_Queue(string n, Hier_Object *p) : Composite(n,p) {
-    int queue_size = 6;
+    int queue_size = 2;
     int lb_sink = 2; 
     
     //    Channel *a = new Channel("a",10,this);

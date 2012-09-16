@@ -40,9 +40,12 @@ enum PacketType {
   PACKET_DATA
 };
 
+class Expr;
+
 string itos(int i);
 unsigned int numBitsRequired( unsigned int maxval);
-
+Signal * BvIncrExprModM (Expr *a, unsigned int m, string name);
+Expr * BvsubExprModM (Expr *a, Expr *b , unsigned int maxval, string name);
 
 
 
@@ -281,20 +284,9 @@ class Slot_Qos {
   unsigned int slotIndexInParentQueue;
 
   string printHeader();
-/*  { */
-/*     std::stringstream out; */
-/*     out << "queue: " << setw(16) << parentQueue->name << " slot:" << setw(2) << slotIndexInParentQueue ; */
-/*     return out.str(); */
-/*   }; */
 
  public:
   Slot_Qos(unsigned int i, Queue *q);
-/*  { */
-/*     slotIndexInParentQueue = i; */
-/*     parentQueue = q; */
-/*     timeToSink = T_PROP_NULL; */
-/*     maxAge = T_PROP_NULL; */
-/*   } */
 
   bool         hasTimeToSink()                 {return timeToSink != T_PROP_NULL;};
   unsigned int getTimeToSink()                 {return timeToSink;};
@@ -304,6 +296,5 @@ class Slot_Qos {
   void printSlotQos(ostream &f);
   void setTimeToSink(unsigned int t);
   void setMaxAge(unsigned int t);
-
 };
 

@@ -178,6 +178,7 @@ class Eq_Expr : public Expr {
   Expr *a, *b;
  public:
  Eq_Expr(Expr *ea, Expr *eb ) : Expr(1) {
+    ASSERT(ea->getWidth() == eb->getWidth());
     a = ea;
     b = eb;
   }
@@ -411,7 +412,7 @@ class Signal : public Expr {
 
 
   virtual void declareSignalVerilog(ostream &f) {
-    ASSERT2(_e->getWidth()>0, "width==0 for signal "+getName() );
+    ASSERT2(_e->getWidth()>0, "width==0 for signal "); //+getName() );
     if (getWidth() == 1)
       f << setw(15) << left << "wire "                       << name << ";\n";
     else 
