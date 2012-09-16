@@ -245,7 +245,7 @@ class Not_Expr : public Expr {
 
   string printExprVerilog() {
     stringstream out;
-    out << "~" << _a->printExprVerilog() << " ";
+    out << "(~" << _a->printExprVerilog() << ")";
     return out.str();
   };
 };
