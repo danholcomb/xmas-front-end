@@ -13,9 +13,9 @@ my $Network = "ex_queue";
 my $Timeout = 20;
 my $Log_Dir = "log";
 GetOptions (
-	    "network=s"     => \$Network, # string
-	    "log_dir=s"     => \$Log_Dir, # string
-	    "timeout=i" => \$Timeout, # int
+	    "network=s"    => \$Network, 
+	    "log_dir=s"    => \$Log_Dir, 
+	    "timeout=i"    => \$Timeout, 
 	   ) or print "ERROR: bad input options"; 
 
 print "\n";
@@ -98,10 +98,6 @@ appendFile("exp_results.txt",print_table($R));
 print "exiting normally\n";
 print Dumper($R);
 exit;
-
-
-
-
 
 
 
