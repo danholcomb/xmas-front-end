@@ -52,21 +52,28 @@ class Verification_Settings {
  public:
   bool isEnabledPhiLQueue;
   bool isEnabledPhiGQueue;
-  bool isEnabledBoundChannel;
-  bool isEnabledResponseBoundChannel;
+  bool isEnabledBoundChannel; //irdy or trdy unconditional bounds
+  bool isEnabledResponseBoundChannel; //irdy or trdy response bounds
   bool isEnabledPsi;
   bool isEnabledPersistance;
 
   Verification_Settings() { 
-    isEnabledPhiLQueue = true;
-    isEnabledPhiGQueue = true;
-    isEnabledResponseBoundChannel   = true;
-    isEnabledBoundChannel   = true;
-    isEnabledPsi   = true;
-    isEnabledPersistance = true;
     tMax = 20;
+    isEnabledPhiLQueue = false;
+    isEnabledPhiGQueue = false;
+    isEnabledResponseBoundChannel = false;
+    isEnabledBoundChannel = false;
+    isEnabledPsi = false;
+    isEnabledPersistance = false;
   };
 
+  void  enableBoundChannel() { isEnabledBoundChannel = true;}
+  void disableBoundChannel() { isEnabledBoundChannel = false;}
+  void  enableResponseBoundChannel() { isEnabledResponseBoundChannel = true;}
+  void disableResponseBoundChannel() { isEnabledResponseBoundChannel = false;}
+
+  void  enablePersistance() { isEnabledPersistance = true;}
+  void disablePersistance() { isEnabledPersistance = false;}
   void  enablePhiLQueue() { isEnabledPhiLQueue = true;}
   void disablePhiLQueue() { isEnabledPhiLQueue = false;}
   void  enablePsi() { isEnabledPsi = true;}
@@ -273,42 +280,30 @@ class Slot_Qos {
   Queue * parentQueue;
   unsigned int slotIndexInParentQueue;
 
-  string printHeader() {
-    std::stringstream out;
-    out << "queue: " << setw(16) << parentQueue->name << " slot:" << setw(2) << slotIndexInParentQueue ;
-    return out.str();
-  };
+  string printHeader();
+/*  { */
+/*     std::stringstream out; */
+/*     out << "queue: " << setw(16) << parentQueue->name << " slot:" << setw(2) << slotIndexInParentQueue ; */
+/*     return out.str(); */
+/*   }; */
 
  public:
-  Slot_Qos(unsigned int i, Queue *q) {
-    slotIndexInParentQueue = i;
-    parentQueue = q;
-    timeToSink = T_PROP_NULL;
-    maxAge = T_PROP_NULL;
-  }
+  Slot_Qos(unsigned int i, Queue *q);
+/*  { */
+/*     slotIndexInParentQueue = i; */
+/*     parentQueue = q; */
+/*     timeToSink = T_PROP_NULL; */
+/*     maxAge = T_PROP_NULL; */
+/*   } */
 
   bool         hasTimeToSink()                 {return timeToSink != T_PROP_NULL;};
   unsigned int getTimeToSink()                 {return timeToSink;};
   bool         hasMaxAge()                     {return maxAge != T_PROP_NULL;};
   unsigned int getMaxAge()                     {return maxAge;}
-  void printSlotQos(ostream &f) {
-    f    << printHeader() 
-	 << "  timeToSinkBound: " << setw(3)  << right << getTimeToSink()
-	 << "  ageBound: "        << setw(3)  << right << getMaxAge()
-	 << "\n"; 
-  }
 
-
-  void         setTimeToSink(unsigned int t)   { 
-    timeToSink = min(timeToSink,t);
-    g::outQos << printHeader() << "  set timeToSink to " << maxAge << "\n";
-  }
-
-  void         setMaxAge(unsigned int t)       { 
-    maxAge = min(maxAge,t);
-    g::outQos << printHeader() << "  set maxAge to " << maxAge << "\n";
-  }
-
+  void printSlotQos(ostream &f);
+  void setTimeToSink(unsigned int t);
+  void setMaxAge(unsigned int t);
 
 };
 

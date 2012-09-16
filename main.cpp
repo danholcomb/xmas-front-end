@@ -213,14 +213,15 @@ public:
       {
 	aImpliesBoundedFutureB(bvtrue, trdy, qos->getTargetBound(), name+"TB");
       }
+
     if ( qos->hasInitiatorResponseBound() & logic::c->voptions->isEnabledResponseBoundChannel) 
       {
-	aImpliesBoundedFutureB(irdy, trdy, qos->getTargetResponseBound(), name+"TRB");
+	aImpliesBoundedFutureB(irdy, trdy, qos->getTargetResponseBound(), name+"TRBB");
       }
 
     if ( qos->hasInitiatorBound() & logic::c->voptions->isEnabledBoundChannel ) 
       {
-	aImpliesBoundedFutureB(bvtrue, trdy, qos->getTargetBound(), name+"TB");
+	aImpliesBoundedFutureB(bvtrue, trdy, qos->getTargetBound(), name+"TBB");
       }
     // need to add same for initiatiors
 
@@ -533,6 +534,43 @@ public:
 
 
 
+// a counter that asserts an outputs if x cycles elapse between a and b.
+// used for enforcing bounds on sources and sinks, and for checking
+// channel bounds.
+
+Signal * intervalMonitor( Expr * a, Expr * b, unsigned int t, string name) {
+  unsigned int w = numBitsRequired(t); 
+  Signal *cntPlus1 = (new Signal(name+"cntPlus1"))->setWidth(w);
+
+  Seq_Signal *cnt = (new Seq_Signal(name+"cnt"))->setWidth(w);
+
+  Expr *cntEq0 = new Eq_Expr( cnt , new Bvconst_Expr(0,w) );
+
+  //reset to 0 or stay at 0.
+  Expr *nxtCntIs0 = new Or_Expr ( b , new And_Expr( new Not_Expr(a) , cntEq0));
+
+  Signal *nxtCnt = (new Signal(name+"nxtCnt"))
+    -> setExpr(  (new Case_Expr())
+		 -> setDefault( cntPlus1 )
+		 -> addCase(nxtCntIs0, new Bvconst_Expr(0,w))
+		 );
+      
+  cnt 
+    ->setResetExpr(  new Bvconst_Expr(0,w)  )
+    ->setNxtExpr (nxtCnt);
+
+  cntPlus1
+    -> setExpr( 
+	       (new Bvadd_Expr( cnt , new Bvconst_Expr(1,w) ))->setWidth(w) 
+		);
+	
+  Signal *intervalViolated = (new Signal(name+"intervalViolated"))
+    -> setExpr ( new Lt_Expr( new Bvconst_Expr(t,w) , cnt ) );
+  
+  return intervalViolated;
+}
+
+
 
 class Sink : public Primitive {
 public:
@@ -599,32 +637,37 @@ public:
     // the counter to enforce bounded non-det
     if (sink_type == ORACLE_BOUNDED_RESPONSE) 
       {
-	unsigned int w = numBitsRequired(bound);
-
+	
 	Signal *blocked = (new Signal(name+"blocked"))
 	  -> setExpr( new And_Expr( i->channel->irdy, new Not_Expr(     i->channel->trdy  ) )  );
+	
+	Signal *force_trdy = intervalMonitor(blocked, i->channel->trdy, bound-1, name);
 
-	Signal *nxt_cnt = new Signal();
+	
+	// 	unsigned int w = numBitsRequired(bound);
 
-	Signal *cnt = (new Seq_Signal(name+"cnt"))
-	  -> setResetExpr( new Bvconst_Expr(0,w) )
-	  -> setNxtExpr ( nxt_cnt );
+
+	// 	Signal *nxt_cnt = new Signal();
+
+	// 	Signal *cnt = (new Seq_Signal(name+"cnt"))
+	// 	  -> setResetExpr( new Bvconst_Expr(0,w) )
+	// 	  -> setNxtExpr ( nxt_cnt );
       
-	Signal *cntPlus1 = (new Signal(name+"cntPlus1"))
-	  -> setExpr( 
-		     (new Bvadd_Expr( cnt  , (new Bvconst_Expr(1,w)) -> setWidth(w)   ) )
-		     -> setWidth(w) 
-		      ); 
+	// 	Signal *cntPlus1 = (new Signal(name+"cntPlus1"))
+	// 	  -> setExpr( 
+	// 		     (new Bvadd_Expr( cnt  , (new Bvconst_Expr(1,w)) -> setWidth(w)   ) )
+	// 		     -> setWidth(w) 
+	// 		      ); 
 
-	Signal *force_trdy = (new Signal(name+"force_trdy"))
-	  -> setExpr( new Eq_Expr( cnt , new Bvconst_Expr(bound, w) ) );
+	// 	Signal *force_trdy = (new Signal(name+"force_trdy"))
+	// 	  -> setExpr( new Eq_Expr( cnt , new Bvconst_Expr(bound, w) ) );
       
-	nxt_cnt
-	  -> setName( name+"nxt_cnt")
-	  -> setExpr( (new Case_Expr())
-		      -> setDefault( new Bvconst_Expr(0,w)  )
-		      -> addCase( blocked , cntPlus1 )
-		      );
+	// 	nxt_cnt
+	// 	  -> setName( name+"nxt_cnt")
+	// 	  -> setExpr( (new Case_Expr())
+	// 		      -> setDefault( new Bvconst_Expr(0,w)  )
+	// 		      -> addCase( blocked , cntPlus1 )
+	// 		      );
 
 	i->channel->trdy -> setExpr( new Or_Expr( oracle_trdy , force_trdy , pre ));
 
@@ -633,28 +676,41 @@ public:
 
     else if (sink_type == ORACLE_BOUNDED) 
       {
-	unsigned int w = numBitsRequired(bound);
 
-	Signal *nxt_cnt = new Signal(name+"nxt_cnt");
 
-	Signal *cnt = (new Seq_Signal(name+"cnt"))
-	  -> setResetExpr( new Bvconst_Expr(0,w) )
-	  -> setNxtExpr ( nxt_cnt );
+	// 	Signal *blocked = (new Signal(name+"blocked"))
+	// 	  -> setExpr( new And_Expr( i->channel->irdy, new Not_Expr(     i->channel->trdy  ) )  );
+	
+	//	Expr *ntrdy = new Not_Expr(i->channel->irdy);
+	Signal *force_trdy = intervalMonitor( new Not_Expr(i->channel->trdy) , i->channel->trdy, bound-1, name);
+
+
+
+	
+	// 	//aImpliesBoundedFutureB(irdy, trdy, qos->getTargetResponseBound(), name+"TRB");
+
+	// 	unsigned int w = numBitsRequired(bound);
+
+	// 	Signal *nxt_cnt = new Signal(name+"nxt_cnt");
+
+	// 	Signal *cnt = (new Seq_Signal(name+"cnt"))
+	// 	  -> setResetExpr( new Bvconst_Expr(0,w) )
+	// 	  -> setNxtExpr ( nxt_cnt );
       
-	Signal *cntPlus1 = (new Signal(name+"cntPlus1"))
-	  -> setExpr( 
-		     (new Bvadd_Expr(cnt , (new Bvconst_Expr(1)) -> setWidth(w) ))->setWidth(w)
-		      ); 
+	// 	Signal *cntPlus1 = (new Signal(name+"cntPlus1"))
+	// 	  -> setExpr( 
+	// 		     (new Bvadd_Expr(cnt , (new Bvconst_Expr(1)) -> setWidth(w) ))->setWidth(w)
+	// 		      ); 
 
 
-	Signal *force_trdy = (new Signal(name+"force_trdy"))
-	  -> setExpr( new Eq_Expr( cnt , new Bvconst_Expr(bound, w) ) );
+	// 	Signal *force_trdy = (new Signal(name+"force_trdy"))
+	// 	  -> setExpr( new Eq_Expr( cnt , new Bvconst_Expr(bound, w) ) );
       
-	nxt_cnt
-	  -> setExpr( (new Case_Expr())
-		      -> setDefault( new Bvconst_Expr(0,w) )
-		      -> addCase( new Not_Expr(i->channel->trdy) , cntPlus1 )
-		      );
+	// 	nxt_cnt
+	// 	  -> setExpr( (new Case_Expr())
+	// 		      -> setDefault( new Bvconst_Expr(0,w) )
+	// 		      -> addCase( new Not_Expr(i->channel->trdy) , cntPlus1 )
+	// 		      );
 
 	i->channel->trdy -> setExpr( new Or_Expr( oracle_trdy , force_trdy , pre ));
 
@@ -679,6 +735,40 @@ public:
 
 
 };
+
+
+
+string Slot_Qos::printHeader() {
+  std::stringstream out;
+  out << "queue: " << setw(16) << parentQueue->name << " slot:" << setw(2) << slotIndexInParentQueue ;
+  return out.str();
+};
+
+Slot_Qos::Slot_Qos(unsigned int i, Queue *q) {
+  slotIndexInParentQueue = i;
+  parentQueue = q;
+  timeToSink = T_PROP_NULL;
+  maxAge = T_PROP_NULL;
+}
+
+void Slot_Qos::printSlotQos(ostream &f) {
+  f    << printHeader() 
+       << "  timeToSinkBound: " << setw(3)  << right << getTimeToSink()
+       << "  ageBound: "        << setw(3)  << right << getMaxAge()
+       << "\n"; 
+}
+
+void Slot_Qos::setTimeToSink(unsigned int t)   { 
+  timeToSink = min(timeToSink,t);
+  g::outQos << printHeader() << "  set timeToSink to " << maxAge << "\n";
+}
+
+
+void Slot_Qos::setMaxAge(unsigned int t)       { 
+  ASSERT(t < T_PROP_NULL);
+  maxAge = min(maxAge,t);
+  g::outQos << printHeader() << "  set maxAge to " << maxAge << " arg was " << t << "\n";
+}
 
  
 
@@ -720,36 +810,51 @@ PacketType Queue::getPacketType () { return type;}
 void Queue::propagateLatencyLemmas( ) {
   Channel *ichan = i->channel;
   Channel *ochan = o->channel;
-
-  unsigned int slot_latency = ochan->qos->getTargetResponseBound() + 1;
-
+  
+  
   if (ochan->qos->getTargetResponseBound() == 0) 
     {
       numItemsMax = 1; //eager queue should never exceed 1 item
       for (int i = depth-1; i >= 0; i--) 
 	{ 
 	  if (ichan->qos->hasAgeBound())	      
-	    slotQos[i]->setMaxAge( 1 + ichan->qos->getAgeBound() );
+	    {
+	      slotQos[i]->setMaxAge( 1 + ichan->qos->getAgeBound() );
+	    }
 	  if (ochan->qos->hasTimeToSinkBound())	      
-	    slotQos[i]->setTimeToSink( 1 + ochan->qos->getTimeToSinkBound() );
+	    {
+	      slotQos[i]->setTimeToSink( 1 + ochan->qos->getTimeToSinkBound() );
+	    }
 	}
     } 
   else 
     {
+      unsigned int slot_latency = min (ochan->qos->getTargetBound() , ochan->qos->getTargetResponseBound() + 1);
       for (int i = 0; i<depth; i++) 
 	{
 	  if (ichan->qos->hasAgeBound())
-	    slotQos[i]->setMaxAge( ichan->qos->getAgeBound()       + slot_latency * (depth-i) );
+	    {
+	      slotQos[i] -> setMaxAge( ichan->qos->getAgeBound() + slot_latency * (depth-i) );
+	    }
 	  if (ochan->qos->hasTimeToSinkBound())
-	    slotQos[i]->setTimeToSink( ochan->qos->getTimeToSinkBound()  + slot_latency * i );
+	    {
+	      slotQos[i] -> setTimeToSink( ochan->qos->getTimeToSinkBound()  + slot_latency * i );
+	    }
 	}
     }
-    
+  
   if (depth == 1) 
-    ichan->qos->updateTargetResponseBound( 1 + ochan->qos->getTargetResponseBound() ); //no simultaneous r/w
+    {
+      ichan->qos->updateTargetResponseBound( 1 + ochan->qos->getTargetResponseBound() ); //no simultaneous r/w
+      ichan->qos->updateTargetBound( 1 + ochan->qos->getTargetBound() ); //no simultaneous r/w
+    }
   else 
-    ichan->qos->updateTargetResponseBound( ochan->qos->getTargetResponseBound() );
-    
+    {
+      ichan->qos->updateTargetResponseBound( ochan->qos->getTargetResponseBound() );
+      ichan->qos->updateTargetBound( ochan->qos->getTargetBound() );
+    }
+  
+  
   ichan->qos->updateTimeToSinkBound(  slotQos[depth-1]->getTimeToSink() ); 
   ochan->qos->updateAgeBound( slotQos[0]->getMaxAge() ); 
 
@@ -808,39 +913,65 @@ void Ckt::buildNetworkLogic(Network *n) {
 };
 
 
+
+
+
+
+
+
 // a macro that add logic to ckt in order to check property
 void aImpliesBoundedFutureB( Expr * a, Expr * b, unsigned int t, string name) {
-  unsigned int w = numBitsRequired(t); 
-  Signal *cntPlus1 = (new Signal(name+"cntPlus1"))->setWidth(w);
 
-  Seq_Signal *cnt = (new Seq_Signal(name+"cnt"))->setWidth(w);
+  Signal *propertyViolated = intervalMonitor(a, b, t, name);
 
-  Expr *cntEq0 = new Eq_Expr( cnt , new Bvconst_Expr(0,w) );
-
-  //reset to 0 or stay at 0.
-  Expr *nxtCntIs0 = new Or_Expr ( b , new And_Expr( new Not_Expr(a) , cntEq0));
-
-  Signal *nxtCnt = (new Signal(name+"nxtCnt"))
-    -> setExpr(  (new Case_Expr())
-		 -> setDefault( cntPlus1 )
-		 -> addCase(nxtCntIs0, new Bvconst_Expr(0,w))
-		 );
-      
-  cnt 
-    ->setResetExpr(  new Bvconst_Expr(0,w)  )
-    ->setNxtExpr (nxtCnt);
-
-  cntPlus1
-    -> setExpr( 
-	       (new Bvadd_Expr( cnt , new Bvconst_Expr(1,w) ))->setWidth(w) 
-		);
-	
   Signal *propertyValid = (new Signal(name+"Valid"))
-    -> setExpr ( new Lte_Expr( cnt, new Bvconst_Expr(t,w) ) );
+    -> setExpr ( new Not_Expr( propertyViolated ));
+
   propertyValid -> assertSignalTrue();
 
   return;
 }
+
+
+
+
+
+
+// // a macro that add logic to ckt in order to check property
+// void aImpliesBoundedFutureB( Expr * a, Expr * b, unsigned int t, string name) {
+//   unsigned int w = numBitsRequired(t); 
+//   Signal *cntPlus1 = (new Signal(name+"cntPlus1"))->setWidth(w);
+
+//   Seq_Signal *cnt = (new Seq_Signal(name+"cnt"))->setWidth(w);
+
+//   Expr *cntEq0 = new Eq_Expr( cnt , new Bvconst_Expr(0,w) );
+
+//   //reset to 0 or stay at 0.
+//   Expr *nxtCntIs0 = new Or_Expr ( b , new And_Expr( new Not_Expr(a) , cntEq0));
+
+//   Signal *nxtCnt = (new Signal(name+"nxtCnt"))
+//     -> setExpr(  (new Case_Expr())
+// 		 -> setDefault( cntPlus1 )
+// 		 -> addCase(nxtCntIs0, new Bvconst_Expr(0,w))
+// 		 );
+      
+//   cnt 
+//     ->setResetExpr(  new Bvconst_Expr(0,w)  )
+//     ->setNxtExpr (nxtCnt);
+
+//   cntPlus1
+//     -> setExpr( 
+// 	       (new Bvadd_Expr( cnt , new Bvconst_Expr(1,w) ))->setWidth(w) 
+// 		);
+	
+//   Signal *propertyValid = (new Signal(name+"Valid"))
+//     -> setExpr ( new Lte_Expr( cnt, new Bvconst_Expr(t,w) ) );
+//   propertyValid -> assertSignalTrue();
+
+//   return;
+// }
+
+
 
 
 
@@ -1317,6 +1448,7 @@ void Ckt::dumpAsVerilog (string fname) {
   vfile << "\n\n";
       
   vfile << "endmodule\n";
+  cout << "finished dumping verilog to " << fname << "\n";
   return;    
 };
 
@@ -2065,8 +2197,8 @@ public:
     new Queue(a,b,queue_size,"q1",this);
     
     Sink *sink_b = new Sink(b,"sink_b",this);
-    (sink_b)->setTypeBoundedResponse(lb_sink);
-    //(sink_b)->setTypeBounded(lb_sink);
+    //(sink_b)->setTypeBoundedResponse(lb_sink);
+    (sink_b)->setTypeBounded(lb_sink);
     (src_a)->setTypeNondeterministic();
   }
     
@@ -2119,11 +2251,17 @@ int main (int argc, char **argv)
 
       if        ( s == "--dump")    { fnameOut = argv[++i];
       } else if ( s == "--network") { network  = argv[++i];
-      } else if ( s == "--t_max")          { logic::c->voptions->setTMax( atoi(argv[++i]) );
-      } else if ( s == "--enable_lemmas")  { logic::c->voptions->enablePhiLQueue();
-      } else if ( s == "--disable_lemmas") { logic::c->voptions->disablePhiLQueue();
-      } else if ( s == "--enable_psi")     { logic::c->voptions->enablePsi() ;
-      } else if ( s == "--disable_psi")    { logic::c->voptions->disablePsi(); 
+      } else if ( s == "--t_max")                          { logic::c->voptions->setTMax( atoi(argv[++i]) );
+      } else if ( s ==  "--enable_persistance")            { logic::c->voptions->enablePersistance();
+      } else if ( s == "--disable_persistance")            { logic::c->voptions->disablePersistance();
+      } else if ( s ==  "--enable_lemmas")                 { logic::c->voptions->enablePhiLQueue();
+      } else if ( s == "--disable_lemmas")                 { logic::c->voptions->disablePhiLQueue();
+      } else if ( s ==  "--enable_psi")                    { logic::c->voptions->enablePsi() ;
+      } else if ( s == "--disable_psi")                    { logic::c->voptions->disablePsi(); 
+      } else if ( s == "--enable_bound_channel")           { logic::c->voptions->enableBoundChannel();
+      } else if ( s == "--disable_bound_channel")          { logic::c->voptions->disableBoundChannel();
+      } else if ( s == "--enable_response_bound_channel")  { logic::c->voptions->enableResponseBoundChannel();
+      } else if ( s == "--disable_response_bound_channel") { logic::c->voptions->disableResponseBoundChannel();
       } else {
 	ASSERT2(0,"cmd line argument "+s+" is not understood\n");
       }
