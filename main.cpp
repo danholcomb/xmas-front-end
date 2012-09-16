@@ -637,83 +637,18 @@ public:
     // the counter to enforce bounded non-det
     if (sink_type == ORACLE_BOUNDED_RESPONSE) 
       {
-	
 	Signal *blocked = (new Signal(name+"blocked"))
 	  -> setExpr( new And_Expr( i->channel->irdy, new Not_Expr(     i->channel->trdy  ) )  );
 	
 	Signal *force_trdy = intervalMonitor(blocked, i->channel->trdy, bound-1, name);
-
-	
-	// 	unsigned int w = numBitsRequired(bound);
-
-
-	// 	Signal *nxt_cnt = new Signal();
-
-	// 	Signal *cnt = (new Seq_Signal(name+"cnt"))
-	// 	  -> setResetExpr( new Bvconst_Expr(0,w) )
-	// 	  -> setNxtExpr ( nxt_cnt );
-      
-	// 	Signal *cntPlus1 = (new Signal(name+"cntPlus1"))
-	// 	  -> setExpr( 
-	// 		     (new Bvadd_Expr( cnt  , (new Bvconst_Expr(1,w)) -> setWidth(w)   ) )
-	// 		     -> setWidth(w) 
-	// 		      ); 
-
-	// 	Signal *force_trdy = (new Signal(name+"force_trdy"))
-	// 	  -> setExpr( new Eq_Expr( cnt , new Bvconst_Expr(bound, w) ) );
-      
-	// 	nxt_cnt
-	// 	  -> setName( name+"nxt_cnt")
-	// 	  -> setExpr( (new Case_Expr())
-	// 		      -> setDefault( new Bvconst_Expr(0,w)  )
-	// 		      -> addCase( blocked , cntPlus1 )
-	// 		      );
-
 	i->channel->trdy -> setExpr( new Or_Expr( oracle_trdy , force_trdy , pre ));
-
       } 
 
 
     else if (sink_type == ORACLE_BOUNDED) 
       {
-
-
-	// 	Signal *blocked = (new Signal(name+"blocked"))
-	// 	  -> setExpr( new And_Expr( i->channel->irdy, new Not_Expr(     i->channel->trdy  ) )  );
-	
-	//	Expr *ntrdy = new Not_Expr(i->channel->irdy);
 	Signal *force_trdy = intervalMonitor( new Not_Expr(i->channel->trdy) , i->channel->trdy, bound-1, name);
-
-
-
-	
-	// 	//aImpliesBoundedFutureB(irdy, trdy, qos->getTargetResponseBound(), name+"TRB");
-
-	// 	unsigned int w = numBitsRequired(bound);
-
-	// 	Signal *nxt_cnt = new Signal(name+"nxt_cnt");
-
-	// 	Signal *cnt = (new Seq_Signal(name+"cnt"))
-	// 	  -> setResetExpr( new Bvconst_Expr(0,w) )
-	// 	  -> setNxtExpr ( nxt_cnt );
-      
-	// 	Signal *cntPlus1 = (new Signal(name+"cntPlus1"))
-	// 	  -> setExpr( 
-	// 		     (new Bvadd_Expr(cnt , (new Bvconst_Expr(1)) -> setWidth(w) ))->setWidth(w)
-	// 		      ); 
-
-
-	// 	Signal *force_trdy = (new Signal(name+"force_trdy"))
-	// 	  -> setExpr( new Eq_Expr( cnt , new Bvconst_Expr(bound, w) ) );
-      
-	// 	nxt_cnt
-	// 	  -> setExpr( (new Case_Expr())
-	// 		      -> setDefault( new Bvconst_Expr(0,w) )
-	// 		      -> addCase( new Not_Expr(i->channel->trdy) , cntPlus1 )
-	// 		      );
-
 	i->channel->trdy -> setExpr( new Or_Expr( oracle_trdy , force_trdy , pre ));
-
       } 
 
     else if (sink_type == ORACLE_BOUNDED) 
@@ -937,39 +872,6 @@ void aImpliesBoundedFutureB( Expr * a, Expr * b, unsigned int t, string name) {
 
 
 
-// // a macro that add logic to ckt in order to check property
-// void aImpliesBoundedFutureB( Expr * a, Expr * b, unsigned int t, string name) {
-//   unsigned int w = numBitsRequired(t); 
-//   Signal *cntPlus1 = (new Signal(name+"cntPlus1"))->setWidth(w);
-
-//   Seq_Signal *cnt = (new Seq_Signal(name+"cnt"))->setWidth(w);
-
-//   Expr *cntEq0 = new Eq_Expr( cnt , new Bvconst_Expr(0,w) );
-
-//   //reset to 0 or stay at 0.
-//   Expr *nxtCntIs0 = new Or_Expr ( b , new And_Expr( new Not_Expr(a) , cntEq0));
-
-//   Signal *nxtCnt = (new Signal(name+"nxtCnt"))
-//     -> setExpr(  (new Case_Expr())
-// 		 -> setDefault( cntPlus1 )
-// 		 -> addCase(nxtCntIs0, new Bvconst_Expr(0,w))
-// 		 );
-      
-//   cnt 
-//     ->setResetExpr(  new Bvconst_Expr(0,w)  )
-//     ->setNxtExpr (nxtCnt);
-
-//   cntPlus1
-//     -> setExpr( 
-// 	       (new Bvadd_Expr( cnt , new Bvconst_Expr(1,w) ))->setWidth(w) 
-// 		);
-	
-//   Signal *propertyValid = (new Signal(name+"Valid"))
-//     -> setExpr ( new Lte_Expr( cnt, new Bvconst_Expr(t,w) ) );
-//   propertyValid -> assertSignalTrue();
-
-//   return;
-// }
 
 
 
@@ -1001,6 +903,50 @@ Expr * AgeOfExpr (Expr *in) {
 };
 
 
+// returns expression for (a - b) % maxval
+Expr * BvsubExprModM (Expr *a, Expr *b , unsigned int maxval, string name) {
+
+  unsigned int w = a->getWidth();
+  ASSERT(w == b->getWidth());
+  //logic::c->wClk;
+   
+  // if clk = 0 and injection = 111...1, then age s/b 1. for rollover
+  // in case 2, do (111...1 - injection + 1) so as not to use any
+  // numbers exceeding 111...1
+  //  double maxval = pow(double(2),double(w))-1;
+
+  Expr *diff_normal = new Bvsub_Expr(w, a, b);
+  Expr *overflow = new Lt_Expr( a , b);
+  Expr *x  = new Bvsub_Expr(w, new Bvconst_Expr(maxval,w), b);
+  Expr *y = new Bvadd_Expr(w, new Bvconst_Expr(1,w) , x);
+  Expr *diff_overflow = new Bvadd_Expr(w,  a , y );
+  Expr *diff = (new Case_Expr(w))
+    -> setDefault(diff_normal)
+    -> addCase(overflow, diff_overflow);
+
+  return diff;
+};
+
+// returns expression for (a+1) % maxval
+Signal * BvIncrExprModM (Expr *a, unsigned int m, string name) {
+
+  unsigned int w = a->getWidth();
+  ASSERT(w >= numBitsRequired(m));
+
+  Expr *rollover = new Eq_Expr( a , new Bvconst_Expr(m-1,w) );
+  Expr *plus1 = new Bvadd_Expr(w, a , new Bvconst_Expr(1,w));  
+  
+  Signal *incrModM = (new Signal(name+"incrModM"))
+    -> setExpr( (new Case_Expr())		 
+		-> setDefault(plus1)
+		-> addCase(rollover, new Bvconst_Expr(0,w) ) -> setWidth(w)
+		);
+
+
+  return incrModM;
+};
+
+
 
 
 
@@ -1022,12 +968,6 @@ void Queue::buildPrimitiveLogic ( ) {
       wPacket += logic::c->wClk; 
       tBits = make_pair(wPacket-1, i->channel->getDataWidth()); //msb is first
     } 
-  else 
-    {
-      ;
-      
-
-    }
 
   
 
@@ -1110,15 +1050,18 @@ void Queue::buildPrimitiveLogic ( ) {
     -> setResetExpr( (new Bvconst_Expr(0)) -> setWidth(wDepth) )
     -> setNxtExpr (nxt_tail);
   
-  Expr *expr_tail_plus_1 = new Bvadd_Expr(wDepth, tail, new Bvconst_Expr(1,wDepth));  
-  Expr *eq_mod = new Eq_Expr( tail, new Bvconst_Expr(depth-1,wDepth) );
+//   Expr *expr_tail_plus_1 = new Bvadd_Expr(wDepth, tail, new Bvconst_Expr(1,wDepth));  
+//   Expr *eq_mod = new Eq_Expr( tail, new Bvconst_Expr(depth-1,wDepth) );
   
-  Signal *tail_plus_1 = (new Signal(name+"tailPlus1Mod"))
-    -> setExpr( (new Case_Expr())		 
-		-> setDefault(expr_tail_plus_1)
-		-> addCase(eq_mod, new Bvconst_Expr(0,wDepth) ) -> setWidth(wDepth)
+//   Signal *tail_plus_1 = (new Signal(name+"tailPlus1Mod"))
+//     -> setExpr( (new Case_Expr())		 
+// 		-> setDefault(expr_tail_plus_1)
+// 		-> addCase(eq_mod, new Bvconst_Expr(0,wDepth) ) -> setWidth(wDepth)
 
-		);
+// 		);
+  Signal *tail_plus_1 = BvIncrExprModM(tail, depth, name);
+  
+
 
   nxt_tail
     -> setName(name+"nxt_tail")
@@ -1136,16 +1079,18 @@ void Queue::buildPrimitiveLogic ( ) {
     -> setResetExpr( new Bvconst_Expr(0,wDepth) )
     -> setNxtExpr ( nxt_head );
 
-  Expr *expr_head_plus_1 = new Bvadd_Expr( wDepth, head, new Bvconst_Expr(1,wDepth));  
-  Expr *head_eq_max = new Eq_Expr( head, new Bvconst_Expr(depth-1,wDepth) );
+//   Expr *expr_head_plus_1 = new Bvadd_Expr( wDepth, head, new Bvconst_Expr(1,wDepth));  
+//   Expr *head_eq_max = new Eq_Expr( head, new Bvconst_Expr(depth-1,wDepth) );
   
-  Signal *head_plus_1 = (new Signal())
-    -> setName(name+"head_plus1mod")
-    -> setExpr( (new Case_Expr())		 
-		-> setDefault(expr_head_plus_1)
-		-> addCase(head_eq_max, new Bvconst_Expr(0,wDepth) )
-		-> setWidth(wDepth)
-		);
+//   Signal *head_plus_1 = (new Signal())
+//     -> setName(name+"head_plus1mod")
+//     -> setExpr( (new Case_Expr())		 
+// 		-> setDefault(expr_head_plus_1)
+// 		-> addCase(head_eq_max, new Bvconst_Expr(0,wDepth) )
+// 		-> setWidth(wDepth)
+// 		);
+
+  Signal *head_plus_1 = BvIncrExprModM(head, depth, name+"headPlus1ModM");
 
 
   nxt_head 
@@ -1239,14 +1184,26 @@ void Queue::buildPrimitiveLogic ( ) {
 
   if (logic::c->voptions->isEnabledPsi) 
     {
-      Signal *numItems_valid = (new Signal())
-	-> setName( name+"numItems_valid" )
+      Signal *numItemsValid = (new Signal())
+	-> setName( name+"numItemsValid" )
 	-> setExpr( new Lte_Expr( 
 				 numItems ,
 				 new Bvconst_Expr(numItemsMax,wDepth)
 				  )
 		    );
-      numItems_valid  -> assertSignalTrue();
+      numItemsValid  -> assertSignalTrue();
+
+      // need to handle ambigious case where head and tail point to same thing
+      Signal *headTailDistance = (new Signal())
+	-> setName( name+"headTailDistance" )
+	-> setExpr( BvsubExprModM( tail, head, depth-1, name+"headTailDistance") );
+      
+      Signal *headTailDistanceValid = (new Signal(name+"headTailDistanceValid"))
+	-> setExpr( new Eq_Expr(headTailDistance, numItems));
+
+      headTailDistanceValid -> assertSignalTrue();
+
+
     }
 
 
@@ -1265,9 +1222,18 @@ void Queue::buildPrimitiveLogic ( ) {
 	    -> setName(name+"qSlot"+itos(i)+"Timestamp")
 	    -> setExpr( new Extract_Expr(qslots[i], tBits.first, tBits.second));
 	  
-	  Signal *agex  = (new Signal())
-	    -> setName(name+"ageIfValid")
-	    -> setExpr( AgeOfExpr(qSlotTimestamp)  );
+	  double maxval = pow(double(2),double(logic::c->wClk))-1;
+
+	  Signal *agex  = (new Signal(name+"ageIfValid"))
+	    -> setExpr( 
+		       BvsubExprModM( 
+				     logic::c->tCurrent, 
+				     qSlotTimestamp , 
+				     maxval , 
+				     name+"qSlot"+itos(i)+"currentMinusTimestamp" 
+				      ) 
+			);
+	  //-> setExpr( AgeOfExpr(qSlotTimestamp)  );
 
 	  age[i] = (new Signal())
 	    -> setName(name+"qslot"+itos(i)+"_age")
@@ -2182,7 +2148,7 @@ public:
 class Ex_Queue : public Composite {
 public:
   Ex_Queue(string n, Hier_Object *p) : Composite(n,p) {
-    int queue_size = 2;
+    int queue_size = 6;
     int lb_sink = 2; 
     
     //    Channel *a = new Channel("a",10,this);
@@ -2197,8 +2163,8 @@ public:
     new Queue(a,b,queue_size,"q1",this);
     
     Sink *sink_b = new Sink(b,"sink_b",this);
-    //(sink_b)->setTypeBoundedResponse(lb_sink);
-    (sink_b)->setTypeBounded(lb_sink);
+    (sink_b)->setTypeBoundedResponse(lb_sink);
+    //(sink_b)->setTypeBounded(lb_sink);
     (src_a)->setTypeNondeterministic();
   }
     
