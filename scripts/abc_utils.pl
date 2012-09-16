@@ -7,7 +7,7 @@ use strict;
 # use Math::VecStat qw(max min maxabs minabs sum average);
 # use local::lib "/home/holcomb/Perl_Modules"; #installs modules without sudo
 
-#use Data::Dumper::Simple;
+use Data::Dumper::Simple;
 $Data::Dumper::Sortkeys = 1;
 
 
@@ -398,3 +398,5 @@ sub resultIsValid {
 	  return 0;
      }
 }
+
+1;

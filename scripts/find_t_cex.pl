@@ -1,4 +1,6 @@
-#!/usr/bin/perl
+#!/opt/local/bin/perl
+
+## #!/usr/bin/perl
 
 use Carp;
 use strict;
@@ -8,8 +10,7 @@ use Data::Dumper;
 $Data::Dumper::Sortkeys = 1;
 use Getopt::Long;
 
-#print "XX".$0."XX";
-require "/Users/dan/xmas_fe/scripts/abc_utils.pl";
+require "/Users/dan/xmas_front_end/xmas-front-end/scripts/abc_utils.pl";
 
 my $Network = "credit_loop";
 my $T_Max = 30;

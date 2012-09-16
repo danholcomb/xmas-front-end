@@ -903,15 +903,6 @@ void Queue::buildPrimitiveLogic ( ) {
     -> setResetExpr( (new Bvconst_Expr(0)) -> setWidth(wDepth) )
     -> setNxtExpr (nxt_tail);
   
-//   Expr *expr_tail_plus_1 = new Bvadd_Expr(wDepth, tail, new Bvconst_Expr(1,wDepth));  
-//   Expr *eq_mod = new Eq_Expr( tail, new Bvconst_Expr(depth-1,wDepth) );
-  
-//   Signal *tail_plus_1 = (new Signal(name+"tailPlus1Mod"))
-//     -> setExpr( (new Case_Expr())		 
-// 		-> setDefault(expr_tail_plus_1)
-// 		-> addCase(eq_mod, new Bvconst_Expr(0,wDepth) ) -> setWidth(wDepth)
-
-// 		);
   Signal *tail_plus_1 = BvIncrExprModM(tail, physicalDepth, name);
   
 
@@ -931,17 +922,6 @@ void Queue::buildPrimitiveLogic ( ) {
   Signal *head = (new Seq_Signal(name+"head"))
     -> setResetExpr( new Bvconst_Expr(0,wDepth) )
     -> setNxtExpr ( nxt_head );
-
-//   Expr *expr_head_plus_1 = new Bvadd_Expr( wDepth, head, new Bvconst_Expr(1,wDepth));  
-//   Expr *head_eq_max = new Eq_Expr( head, new Bvconst_Expr(depth-1,wDepth) );
-  
-//   Signal *head_plus_1 = (new Signal())
-//     -> setName(name+"head_plus1mod")
-//     -> setExpr( (new Case_Expr())		 
-// 		-> setDefault(expr_head_plus_1)
-// 		-> addCase(head_eq_max, new Bvconst_Expr(0,wDepth) )
-// 		-> setWidth(wDepth)
-// 		);
 
   Signal *head_plus_1 = BvIncrExprModM(head, physicalDepth, name+"headPlus1ModM");
 
@@ -1038,29 +1018,14 @@ void Queue::buildPrimitiveLogic ( ) {
   if (logic::c->voptions->isEnabledPsi) 
     {
       
-
-
-      Signal *numItemsValid = (new Signal())
-	-> setName( name+"numItemsValid" )
-	-> setExpr( new Lte_Expr( 
-				 numItems ,
-				 new Bvconst_Expr(numItemsMax,wDepth)
-				  )
-		    );
-      numItemsValid  -> assertSignalTrue();
-
-      // need to handle ambigious case where head and tail point to same thing
       Signal *headTailDistance = (new Signal())
 	-> setName( name+"headTailDistance" )
 	-> setExpr( BvsubExprModM( tail, head, physicalDepth-1, name+"headTailDistance") );
-      //	-> setExpr( BvsubExprModM( tail, head, depth-1, name+"headTailDistance") );
       
       Signal *headTailDistanceValid = (new Signal(name+"headTailDistanceValid"))
 	-> setExpr( new Eq_Expr(headTailDistance, numItems));
 
       headTailDistanceValid -> assertSignalTrue();
-
-
     }
 
 
@@ -1090,7 +1055,6 @@ void Queue::buildPrimitiveLogic ( ) {
 				     name+"qSlot"+itos(i)+"currentMinusTimestamp" 
 				      ) 
 			);
-	  //-> setExpr( AgeOfExpr(qSlotTimestamp)  );
 
 	  age[i] = (new Signal())
 	    -> setName(name+"qslot"+itos(i)+"_age")
@@ -1159,6 +1123,8 @@ void Ckt::buildNetworkLogic(Network *n) {
   cout << "largest time from latency lemmas is     " << maxLatency << "\n";
   cout << "clock will use                          " << wClk << " bits\n\n";
 
+  if (logic::c->voptions->isEnabledPhiLQueue)
+    ASSERT(maxLatency <= voptions->getTMax());
 
   this->oracleBus = new Oracle_Signal("oracles");
   this->tCurrent = new Seq_Signal("tCurrent");
@@ -1222,27 +1188,27 @@ void aImpliesBoundedFutureB( Expr * a, Expr * b, unsigned int t, string name) {
 
 
 
-// returns expression for tCurrent - in, modulo max value of circular counter
-Expr * AgeOfExpr (Expr *in) {
-  ASSERT(0);
-  unsigned int w = logic::c->wClk;
+// // returns expression for tCurrent - in, modulo max value of circular counter
+// Expr * AgeOfExpr (Expr *in) {
+//   ASSERT(0);
+//   unsigned int w = logic::c->wClk;
    
-  // if clk = 0 and injection = 111...1, then age s/b 1. for rollover
-  // in case 2, do (111...1 - injection + 1) so as not to use any
-  // numbers exceeding 111...1
-  double maxval = pow(double(2),double(w))-1;
+//   // if clk = 0 and injection = 111...1, then age s/b 1. for rollover
+//   // in case 2, do (111...1 - injection + 1) so as not to use any
+//   // numbers exceeding 111...1
+//   double maxval = pow(double(2),double(w))-1;
 
-  Expr *age_normal = new Bvsub_Expr(w, logic::c->tCurrent, in);
-  Expr *overflow = new Lt_Expr( logic::c->tCurrent , in);
-  Expr *x  = new Bvsub_Expr(w, new Bvconst_Expr(maxval,w), in);
-  Expr *y = new Bvadd_Expr(w, new Bvconst_Expr(1,w) , x);
-  Expr *age_overflow = new Bvadd_Expr(w,  logic::c->tCurrent , y );
-  Expr *age = (new Case_Expr(w))
-    -> setDefault(age_normal)
-    -> addCase(overflow, age_overflow);
+//   Expr *age_normal = new Bvsub_Expr(w, logic::c->tCurrent, in);
+//   Expr *overflow = new Lt_Expr( logic::c->tCurrent , in);
+//   Expr *x  = new Bvsub_Expr(w, new Bvconst_Expr(maxval,w), in);
+//   Expr *y = new Bvadd_Expr(w, new Bvconst_Expr(1,w) , x);
+//   Expr *age_overflow = new Bvadd_Expr(w,  logic::c->tCurrent , y );
+//   Expr *age = (new Case_Expr(w))
+//     -> setDefault(age_normal)
+//     -> addCase(overflow, age_overflow);
 
-  return age;
-};
+//   return age;
+// };
 
 
 // returns expression for (a - b) % maxval
