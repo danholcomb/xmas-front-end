@@ -475,7 +475,7 @@ public:
     //determine the bitwidths to use
     unsigned int wData = o->channel->data->getWidth();
     unsigned int wOracle = o->channel->getDWidth();
-    cout << "wData: " << wData << " wOracle: " << wOracle << "\n";
+    //cout << "wData: " << wData << " wOracle: " << wOracle << "\n";
     ASSERT(wOracle + logic::c->wClk == wData);
 
     unsigned int lsb = logic::c->oracleBus->getWidth();
@@ -510,7 +510,7 @@ public:
 
   void propagateLatencyLemmas( ) {
 
-    cout << "propagating through source " << name << "\n";
+    //    cout << "propagating through source " << name << "\n";
     if (source_type == ORACLE_EAGER)
       {
 	o->channel->qos->updateInitiatorBound(0);
@@ -1318,7 +1318,6 @@ void Network::addLatencyLemmas()
   for (vector <Source*>::iterator it = sources.begin(); it != sources.end(); it++ ) 
     (*it)->propagateLatencyLemmas();
     
-  cout << "after sinks, number updated channels is " << network::n->modifiedChannels.size() << "\n\n";
 
   // modifiedChannels keeps track of what signals channels need to propagate
   
@@ -2235,10 +2234,12 @@ public:
 
 
 class Ex_Queue : public Composite {
+  int queue_size;
 public:
-  Ex_Queue(string n, Hier_Object *p) : Composite(n,p) {
-    int queue_size = 3;
+  Ex_Queue(string n, Hier_Object *p, int q=3) : Composite(n,p) {
+    int queue_size = q;
     int lb_sink = 2; 
+    cout << "queue size: " << queue_size << "\n";
     
     Channel *a = new Channel("a",4,this);
     Channel *b = new Channel("b",4,this);
@@ -2262,28 +2263,22 @@ public:
 
 class Ex_Queue_Chain : public Composite {
 public:
-  Ex_Queue_Chain(string n, Hier_Object *p) : Composite(n,p) {
+  Ex_Queue_Chain(string n, Hier_Object *p, int numQueues = 1) : Composite(n,p) {
 
-    Channel *a = new Channel("a",4,this);
-    Channel *b = new Channel("b",4,this);
-    Channel *c = new Channel("c",4,this);
-    Channel *d = new Channel("d",4,this);
-//     a->setPacketType(PACKET_DATA);
-//     b->setPacketType(PACKET_DATA);
-//     c->setPacketType(PACKET_DATA);
-//     d->setPacketType(PACKET_DATA);
-                
-    Source *src_a = new Source(a,"src_a",this);
+    cout << "numQueues: " << numQueues << "\n";
 
-    new Queue(a,b,2,"q1",this);
-    new Queue(b,c,2,"q2",this);
-    new Queue(c,d,2,"q3",this);
+    vector < Channel *> ch (numQueues+1);
+    for (int i=0; i< numQueues+1; i++) 
+      ch[i] = new Channel("ch"+itos(i) ,4,this);
     
-
-    Sink *sink_x = new Sink(d,"sink_x",this);
-    (sink_x)->setTypeBoundedResponse(1);
-    (src_a)->setTypeNondeterministic();
+    for (int i=0; i< numQueues; i++) 
+      new Queue(ch[i], ch[i+1] , 2 , "q"+itos(i) , this);//Channel("ch"+itos(i) ,4,this);
         
+    Source *src_a = new Source(ch[0],"src_a",this);
+    (src_a)->setTypeNondeterministic();
+                    
+    Sink *sink_x = new Sink(ch[numQueues],"sink_x",this);
+    (sink_x)->setTypeBoundedResponse(1);        
   }
 };
 
@@ -2345,7 +2340,18 @@ int main (int argc, char **argv)
   else if (network == "ex_tree2")           {  new Ex_Tree2(        "top",hier_root ); } 
   else if (network == "ex_tree3")           {  new Ex_Tree3(        "top",hier_root ); } 
   else if (network == "ex_queue")           {  new Ex_Queue(        "top",hier_root ); } 
+  else if (network == "ex_queue2")          {  new Ex_Queue(        "top",hier_root , 2 ); } 
+  else if (network == "ex_queue3")          {  new Ex_Queue(        "top",hier_root , 3 ); } 
+  else if (network == "ex_queue4")          {  new Ex_Queue(        "top",hier_root , 4 ); } 
+  else if (network == "ex_queue5")          {  new Ex_Queue(        "top",hier_root , 5 ); } 
+  else if (network == "ex_queue6")          {  new Ex_Queue(        "top",hier_root , 6 ); } 
   else if (network == "ex_queue_chain")     {  new Ex_Queue_Chain(  "top",hier_root ); } 
+  else if (network == "ex_queue_chain1")    {  new Ex_Queue_Chain(  "top",hier_root , 1 ); } 
+  else if (network == "ex_queue_chain2")    {  new Ex_Queue_Chain(  "top",hier_root , 2 ); } 
+  else if (network == "ex_queue_chain3")    {  new Ex_Queue_Chain(  "top",hier_root , 3 ); } 
+  else if (network == "ex_queue_chain4")    {  new Ex_Queue_Chain(  "top",hier_root , 4 ); } 
+  else if (network == "ex_queue_chain5")    {  new Ex_Queue_Chain(  "top",hier_root , 5 ); } 
+  else if (network == "ex_queue_chain6")    {  new Ex_Queue_Chain(  "top",hier_root , 6 ); } 
   else if (network == "ex_join")            {  new Ex_Join(         "top",hier_root ); } 
   else if (network == "ex_fork")            {  new Ex_Fork(         "top",hier_root ); } 
   else {  ASSERT(0);  }

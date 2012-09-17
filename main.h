@@ -97,14 +97,16 @@ class Verification_Settings {
 
   void printSettings() {
     cout 
-      << "\nvoptions\n"
-      << "\t isEnabledPhiLQueue=                " << isEnabledPhiLQueue  << "\n"
-      << "\t isEnabledPhiGQueue=                " << isEnabledPhiGQueue  << "\n"
-      << "\t isEnabledResponseBoundChannel=     " << isEnabledResponseBoundChannel          << "\n"
-      << "\t isEnabledBoundChannel=             " << isEnabledBoundChannel          << "\n"
-      << "\t isEnabledPsi=                      " << isEnabledPsi         << "\n"
-      << "\t isEnabledPersistance=              " << isEnabledPersistance << "\n"
-      << "\t tMax=                              " << tMax       << "\n"
+      << "\n===================================================\n"
+      << "voptions:\n"
+      << "\t isEnabledPhiLQueue =                " << isEnabledPhiLQueue             << "\n"
+      << "\t isEnabledPhiGQueue =                " << isEnabledPhiGQueue             << "\n"
+      << "\t isEnabledResponseBoundChannel =     " << isEnabledResponseBoundChannel  << "\n"
+      << "\t isEnabledBoundChannel =             " << isEnabledBoundChannel          << "\n"
+      << "\t isEnabledPsi =                      " << isEnabledPsi                   << "\n"
+      << "\t isEnabledPersistance =              " << isEnabledPersistance           << "\n"
+      << "\t tMax =                              " << tMax                           << "\n"
+      << "===================================================\n"
       ;
   }
 };
