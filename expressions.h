@@ -81,6 +81,7 @@ class Lt_Expr : public Expr {
  public:
   
  Lt_Expr( Expr *a, Expr *b) : Expr(1) {
+    ASSERT(a->getWidth() == b->getWidth());
     _a = a;
     _b = b;
   }
@@ -89,7 +90,7 @@ class Lt_Expr : public Expr {
   string printExprVerilog() {
     ASSERT2((getWidth()==1), "illegal expression width="+getWidth());
     stringstream out;
-    out << _a->printExprVerilog() << " < "<< _b->printExprVerilog() << " ";
+    out << "(" << _a->printExprVerilog() << " < "<< _b->printExprVerilog() << ")";
     return out.str();
   };
 };
@@ -99,6 +100,7 @@ class Lte_Expr : public Expr {
   Expr *_b;
  public:
  Lte_Expr( Expr *a, Expr *b) : Expr(1) {
+    ASSERT(a->getWidth() == b->getWidth());
     _a = a;
     _b = b;
   }
@@ -106,7 +108,7 @@ class Lte_Expr : public Expr {
   string printExprVerilog() {
     ASSERT2((getWidth()==1), "illegal expression width="+getWidth());
     stringstream out;
-    out << _a->printExprVerilog() << " <= "<< _b->printExprVerilog() << " ";
+    out << "(" << _a->printExprVerilog() << " <= "<< _b->printExprVerilog() << ")";
     return out.str();
   };
 };
@@ -196,6 +198,8 @@ class Bvadd_Expr : public Expr {
   Expr *_a, *_b;
  public:
  Bvadd_Expr(unsigned int w, Expr *a, Expr *b ) : Expr(w) {
+    ASSERT(w == a->getWidth() );
+    ASSERT(w == b->getWidth() );
     _a = a;
     _b = b;
   }
@@ -220,10 +224,13 @@ class Bvsub_Expr : public Expr {
   Expr *_a, *_b;
  public:
  Bvsub_Expr(unsigned int w, Expr *a, Expr *b ) : Expr(w) {
+    ASSERT(w == a->getWidth() );
+    ASSERT(w == b->getWidth() );
     _a = a;
     _b = b;
   }
  Bvsub_Expr( Expr *a, Expr *b ) : Expr() {
+    ASSERT(a->getWidth() == b->getWidth() );
     _a = a;
     _b = b;
   }

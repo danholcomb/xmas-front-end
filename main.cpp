@@ -110,6 +110,7 @@ class Channel : public Hier_Object {
   bool assertIrdyPersistant;
   bool assertTrdyPersistant;
   pair <unsigned int,unsigned int> tBits; //which bits hold timestamp if type is pkt
+  pair <unsigned int,unsigned int> dBits; //which bits hold data
 
 
 
@@ -134,8 +135,11 @@ public:
 
     data = (new Signal(name+"data")) 
       -> setExpr((new Bvconst_Expr(1))->setWidth(w) );
+    
 
-    setDataWidth(w); 
+    dBits = make_pair(w-1 , 0); //msb is first
+    
+    //    setDataWidth(w); 
     initiator = NULL;
     target = NULL;
     assertIrdyPersistant = true;
@@ -149,18 +153,20 @@ public:
     unsigned int wNew = wOrig + wClk;
     tBits = make_pair(wNew-1 , wOrig); //msb is first
     data -> setWidth(wNew);
-    cout << "\nwidened " << data->getName() << " to width = " << data->getWidth() << "\n\n";
+    cout << "widened " << data->getName() << " to width = " << data->getWidth() << "\n";
     return;
   }
 
   pair <unsigned int,unsigned int> getTBits () {return tBits;}
+  pair <unsigned int,unsigned int> getDBits () {return dBits;}
+  unsigned int getDWidth () {return dBits.first - dBits.second + 1;}
 
   void setPacketType(PacketType t) { type = t; return; }
   PacketType getPacketType() { return type; }
 
-  void setDataWidth(unsigned int w) { width = w;}
-  void widenData(unsigned int w) { width += w;}
-  unsigned int getDataWidth() { return width;}
+  //  void setDataWidth(unsigned int w) { width = w;}
+  //  void widenData(unsigned int w) { width += w;}
+//   unsigned int getDataWidth() { return width;}
  
   void setIrdyPersistant() { assertIrdyPersistant = true; return; }
   void setTrdyPersistant() { assertTrdyPersistant = true; return; }
@@ -479,18 +485,27 @@ public:
 
     //determine the bitwidths to use
     //unsigned int wOracle = o->channel->getDataWidth(); 
-    unsigned int wOracle = o->channel->data->getWidth(); //getDataWidth(); 
-    //    unsigned int wData ;
+    //unsigned int wOracle = o->channel->data->getWidth(); //getDataWidth(); 
+    //unsigned int wData ;
     unsigned int wData = o->channel->data->getWidth();
-    wOracle = wData - logic::c->wClk;
+    
+    unsigned int wOracle = o->channel->getDWidth();
+    //wData - alogic::c->wClk;
+
+//     if (o->channel->getPacketType() == PACKET_DATA)
+//       wData = wOracle + logic::c->wClk;
+//     else
+//       wData = wOracle;
+
+
+//     if (o->channel->getPacketType() == PACKET_DATA)
+//       wData = wOracle + logic::c->wClk;
+//     else
+//       wData = wOracle;
 
     cout << "wData: " << wData << " wOracle: " << wOracle << "\n";
-    if (o->channel->getPacketType() == PACKET_DATA)
-      wData = wOracle + logic::c->wClk;
-    else
-      wData = wOracle;
-
-    ASSERT(wOracle + logic::c->wClk == o->channel->data->getWidth());
+    //    ASSERT(wOracle + logic::c->wClk == o->channel->data->getWidth());
+    ASSERT(wOracle + logic::c->wClk == wData);
 
     unsigned int lsb = logic::c->oracleBus->getWidth();
     unsigned msb = lsb + wOracle - 1;
@@ -870,7 +885,7 @@ void Queue::buildPrimitiveLogic ( ) {
     -> setNxtExpr( nxt_numItems );
 
   Signal *numItemsPlus1 = (new Signal(name+"numItemsPlus1"))
-    -> setExpr( new Bvadd_Expr( wDepth, numItems, new Bvconst_Expr(1,wPacket))); 
+    -> setExpr( new Bvadd_Expr( wDepth, numItems, new Bvconst_Expr(1,wDepth))); 
 
   Signal *isEmpty = (new Signal(name+"isEmpty"))
     -> setExpr( new Eq_Expr( new Bvconst_Expr(0,wDepth) , numItems ) );
@@ -1703,9 +1718,13 @@ public:
 
   void buildPrimitiveLogic ( ) {
 
-    unsigned int w = o->channel->getDataWidth();
-    ASSERT (w == a->channel->getDataWidth() );
-    ASSERT (w == b->channel->getDataWidth() );
+    unsigned int w = o->channel->data->getWidth();
+    ASSERT (w == a->channel->data->getWidth() );
+    ASSERT (w == b->channel->data->getWidth() );
+
+//     unsigned int w = o->channel->getDataWidth();
+//     ASSERT (w == a->channel->getDataWidth() );
+//     ASSERT (w == b->channel->getDataWidth() );
 
     Signal *a_irdy = new Signal(name+"a_irdy");
     Signal *a_data = new Signal(name+"a_data");
@@ -1814,9 +1833,13 @@ public:
 
   void buildPrimitiveLogic ( ) {
 
-    unsigned int w = portI->channel->getDataWidth();
-    ASSERT (w == portA->channel->getDataWidth());
-    ASSERT (w == portB->channel->getDataWidth());
+    unsigned int w = portI->channel->data->getWidth();
+    ASSERT (w == portA->channel->data->getWidth());
+    ASSERT (w == portB->channel->data->getWidth());
+
+//     unsigned int w = portI->channel->getDataWidth();
+//     ASSERT (w == portA->channel->getDataWidth());
+//     ASSERT (w == portB->channel->getDataWidth());
     
     Signal *i_irdy = new Signal(name+"i_irdy");
     Signal *i_data = new Signal(name+"i_data");
@@ -1904,9 +1927,13 @@ public:
 
   void buildPrimitiveLogic ( ) {
 
-    unsigned int w = portI->channel->getDataWidth();
-    ASSERT (w == portA->channel->getDataWidth());
-    ASSERT (w == portB->channel->getDataWidth());
+    unsigned int w = portI->channel->data->getWidth();
+    ASSERT (w == portA->channel->data->getWidth());
+    ASSERT (w == portB->channel->data->getWidth());
+
+//     unsigned int w = portI->channel->getDataWidth();
+//     ASSERT (w == portA->channel->getDataWidth());
+//     ASSERT (w == portB->channel->getDataWidth());
     
     Signal *i_irdy = new Signal(name+"i_irdy");
     Signal *i_data = new Signal(name+"i_data");
@@ -2189,7 +2216,7 @@ public:
 //     q2 -> slotQos[1] -> disable(); 
 //     q2 -> slotQos[0] -> disable(); 
 //    q2 -> slotQos[1] -> disable(); 
-    q2 -> slotQos[0] -> disable(); 
+//    q2 -> slotQos[0] -> disable(); 
 
     new Merge(e,f,g,"m2",this);
 
