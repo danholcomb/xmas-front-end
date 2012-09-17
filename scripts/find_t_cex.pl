@@ -45,7 +45,6 @@ chomp ($Timestamp);
 my $Search_Type = "LINEAR";
 
 
-#my $t_test = 1;
 my $t_max = $T_Max;
 my $t_min = $T_Min;
 my $t_cex = 0;
@@ -59,11 +58,11 @@ my $t_test = $t_min;
 
  
 while (($t_min <= $t_test) and ($t_test <= $t_max)) {
-     croak if ($nn++ == 20); #just in case ?
+     croak if ($nn++ == 70); #just in case ?
      
      # use psi invariants because it speeds up BMC
      # This is sound/convservative, because we only care about finding the unsat result
-     system('./dump.out --network '.$Network.' --t_max '.$t_test.' --disable_lemmas --enable_psi --disable_persistance --disable_bound_channel --disable_response_bound_channel --dump dump.v');
+     system('./dump.out --network '.$Network.' --t_max '.$t_test.' --disable_lemmas --enable_psi --enable_persistance --disable_bound_channel --disable_response_bound_channel --dump dump.v');
 
      system('ulimit -St '.$Bmc_Timeout.'; abc-bmc.sh dump.v '.$Bmc_Frames.'');
 
