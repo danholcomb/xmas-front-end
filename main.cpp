@@ -2012,48 +2012,48 @@ public:
 };
 
 
-class Ex_Tree : public Composite {
-public:
-  Ex_Tree(string n, Hier_Object *p) : Composite(n,p) {
+// class Ex_Tree : public Composite {
+// public:
+//   Ex_Tree(string n, Hier_Object *p) : Composite(n,p) {
 
-    Channel *a = new Channel("a",4,this);
-    Channel *b = new Channel("b",4,this);
-    Channel *c = new Channel("c",4,this);
-    Channel *d = new Channel("d",4,this);
-    Channel *e = new Channel("e",4,this);
-    Channel *f = new Channel("f",4,this);
-    Channel *g = new Channel("g",4,this);
-    Channel *h = new Channel("h",4,this);
-    Channel *i = new Channel("i",4,this);
-    Channel *j = new Channel("j",4,this);
-    Channel *k = new Channel("k",4,this);
-    Channel *l = new Channel("l",4,this);
+//     Channel *a = new Channel("a",4,this);
+//     Channel *b = new Channel("b",4,this);
+//     Channel *c = new Channel("c",4,this);
+//     Channel *d = new Channel("d",4,this);
+//     Channel *e = new Channel("e",4,this);
+//     Channel *f = new Channel("f",4,this);
+//     Channel *g = new Channel("g",4,this);
+//     Channel *h = new Channel("h",4,this);
+//     Channel *i = new Channel("i",4,this);
+//     Channel *j = new Channel("j",4,this);
+//     Channel *k = new Channel("k",4,this);
+//     Channel *l = new Channel("l",4,this);
                 
-    Source *src_a = new Source(a,"src_a",this);
-    Source *src_c = new Source(c,"src_c",this);
-    Source *src_f = new Source(f,"src_f",this);
-    Source *src_i = new Source(i,"src_i",this);
+//     Source *src_a = new Source(a,"src_a",this);
+//     Source *src_c = new Source(c,"src_c",this);
+//     Source *src_f = new Source(f,"src_f",this);
+//     Source *src_i = new Source(i,"src_i",this);
 
-    new Merge(b,c,d,"m1",this);
-    new Merge(e,f,g,"m2",this);
-    new Merge(h,j,k,"m3",this);
+//     new Merge(b,c,d,"m1",this);
+//     new Merge(e,f,g,"m2",this);
+//     new Merge(h,j,k,"m3",this);
  
-    new Queue(a,b,2,"q1",this);
-    new Queue(d,e,2,"q2",this);
-    new Queue(g,h,2,"q3",this);
-    new Queue(i,j,2,"q4",this);
-    new Queue(k,l,2,"q5",this);
+//     new Queue(a,b,2,"q1",this);
+//     new Queue(d,e,2,"q2",this);
+//     new Queue(g,h,2,"q3",this);
+//     new Queue(i,j,2,"q4",this);
+//     new Queue(k,l,2,"q5",this);
 
-    //Sink *pkt_sink = new Sink(l,"pkt_sink",this);
-    Sink *sink_l = new Sink(l,"sink_l",this);
-    (sink_l)->setTypeBoundedResponse(1);
-    (src_a)->setTypeNondeterministic();
-    (src_c)->setTypeNondeterministic();
-    (src_f)->setTypeNondeterministic();
-    (src_i)->setTypeNondeterministic();
+//     //Sink *pkt_sink = new Sink(l,"pkt_sink",this);
+//     Sink *sink_l = new Sink(l,"sink_l",this);
+//     (sink_l)->setTypeBoundedResponse(1);
+//     (src_a)->setTypeNondeterministic();
+//     (src_c)->setTypeNondeterministic();
+//     (src_f)->setTypeNondeterministic();
+//     (src_i)->setTypeNondeterministic();
         
-  }    
-};
+//   }    
+// };
 
 
 
@@ -2103,6 +2103,11 @@ public:
     //    (src_a)->setTypeNondeterministic();
   }    
 };
+
+
+
+
+
 
 
 
@@ -2260,6 +2265,38 @@ public:
 
 
 
+class Ex_Tree : public Composite {
+public:
+  Ex_Tree(string n, Hier_Object *p, int numStages = 2) : Composite(n,p) {
+    cout << "numStages = " << numStages << "\n";
+    vector <Channel *> ca (numStages);
+    vector <Channel *> cb (numStages);
+    vector <Channel *> cc (numStages);
+    Channel *ccc;
+
+    ccc = new Channel("firstStageInput",4,this);
+    Source *srcFirstStage = new Source(ccc,"srcFirstStage",this);
+
+    for (int i = 0; i < numStages; i++) 
+      {
+	ca[i] = new Channel("a"+itos(i),4,this);
+	cb[i] = new Channel("b"+itos(i),4,this);
+	cc[i] = new Channel("c"+itos(i),4,this);
+
+	new Queue( ccc , ca[i] , 2     ,"q"+itos(i) , this);
+	new Merge( ca[i] , cb[i] , cc[i] ,"m"+itos(i),this);
+	Source *s = new Source(cb[i] , "src"+itos(i), this);
+	(s)->setTypeNondeterministic();
+	ccc = cc[i];
+      }
+                
+    Sink *sinkLastStage = new Sink(ccc,"sinkLastStage",this);
+    (sinkLastStage)->setTypeBoundedResponse(1);
+    (srcFirstStage)->setTypeNondeterministic();
+  }    
+};
+
+
 
 class Ex_Queue_Chain : public Composite {
 public:
@@ -2334,17 +2371,28 @@ int main (int argc, char **argv)
   // contained within one
   Composite *hier_root = new Composite();
   if      (network == "credit_loop")        {  new Credit_Loop(     "top",hier_root ); } 
+  //  else if (network == "ex_tree")            {  new Ex_Tree(         "top",hier_root ); } 
   else if (network == "ex_tree")            {  new Ex_Tree(         "top",hier_root ); } 
-  else if (network == "ex_tree0")           {  new Ex_Tree0(        "top",hier_root ); } 
-  else if (network == "ex_tree1")           {  new Ex_Tree1(        "top",hier_root ); } 
-  else if (network == "ex_tree2")           {  new Ex_Tree2(        "top",hier_root ); } 
-  else if (network == "ex_tree3")           {  new Ex_Tree3(        "top",hier_root ); } 
-  else if (network == "ex_queue")           {  new Ex_Queue(        "top",hier_root ); } 
+  else if (network == "ex_tree1")           {  new Ex_Tree(         "top",hier_root , 1 ); } 
+  else if (network == "ex_tree2")           {  new Ex_Tree(         "top",hier_root , 2 ); } 
+  else if (network == "ex_tree3")           {  new Ex_Tree(         "top",hier_root , 3 ); } 
+  else if (network == "ex_tree4")           {  new Ex_Tree(         "top",hier_root , 4 ); } 
+  else if (network == "ex_tree5")           {  new Ex_Tree(         "top",hier_root , 5 ); } 
+  else if (network == "ex_tree6")           {  new Ex_Tree(         "top",hier_root , 6 ); } 
+  else if (network == "ex_tree7")           {  new Ex_Tree(         "top",hier_root , 7 ); } 
+  else if (network == "ex_tree8")           {  new Ex_Tree(         "top",hier_root , 8 ); } 
+  else if (network == "ex_tree9")           {  new Ex_Tree(         "top",hier_root , 9 ); } 
+
+  else if (network == "ex_queue")           {  new Ex_Queue(        "top",hier_root , 2 ); } 
   else if (network == "ex_queue2")          {  new Ex_Queue(        "top",hier_root , 2 ); } 
   else if (network == "ex_queue3")          {  new Ex_Queue(        "top",hier_root , 3 ); } 
   else if (network == "ex_queue4")          {  new Ex_Queue(        "top",hier_root , 4 ); } 
   else if (network == "ex_queue5")          {  new Ex_Queue(        "top",hier_root , 5 ); } 
   else if (network == "ex_queue6")          {  new Ex_Queue(        "top",hier_root , 6 ); } 
+  else if (network == "ex_queue7")          {  new Ex_Queue(        "top",hier_root , 7 ); } 
+  else if (network == "ex_queue8")          {  new Ex_Queue(        "top",hier_root , 8 ); } 
+  else if (network == "ex_queue9")          {  new Ex_Queue(        "top",hier_root , 9 ); } 
+
   else if (network == "ex_queue_chain")     {  new Ex_Queue_Chain(  "top",hier_root ); } 
   else if (network == "ex_queue_chain1")    {  new Ex_Queue_Chain(  "top",hier_root , 1 ); } 
   else if (network == "ex_queue_chain2")    {  new Ex_Queue_Chain(  "top",hier_root , 2 ); } 
@@ -2352,6 +2400,9 @@ int main (int argc, char **argv)
   else if (network == "ex_queue_chain4")    {  new Ex_Queue_Chain(  "top",hier_root , 4 ); } 
   else if (network == "ex_queue_chain5")    {  new Ex_Queue_Chain(  "top",hier_root , 5 ); } 
   else if (network == "ex_queue_chain6")    {  new Ex_Queue_Chain(  "top",hier_root , 6 ); } 
+  else if (network == "ex_queue_chain7")    {  new Ex_Queue_Chain(  "top",hier_root , 7 ); } 
+  else if (network == "ex_queue_chain8")    {  new Ex_Queue_Chain(  "top",hier_root , 8 ); } 
+  else if (network == "ex_queue_chain9")    {  new Ex_Queue_Chain(  "top",hier_root , 9 ); } 
   else if (network == "ex_join")            {  new Ex_Join(         "top",hier_root ); } 
   else if (network == "ex_fork")            {  new Ex_Fork(         "top",hier_root ); } 
   else {  ASSERT(0);  }

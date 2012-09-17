@@ -49,9 +49,9 @@ push (@$Experiments, { "ENGINE" => "pdr" ,
 		       "PROP_STRING" => '$\Phi^L \wedge \Psi \wedge \Phi^G$ \wedge Channel' });
 
 
-push (@$Experiments, { "ENGINE" => "kind" ,        
-		       "PROP_DEF" => " --enable_phig",
-		       "PROP_STRING" => '$\Phi^G$' });
+# push (@$Experiments, { "ENGINE" => "kind" ,        
+# 		       "PROP_DEF" => " --enable_phig",
+# 		       "PROP_STRING" => '$\Phi^G$' });
 
 push (@$Experiments, { "ENGINE" => "kind" ,        
 		       "PROP_DEF" => " --enable_psi --enable_phig",
