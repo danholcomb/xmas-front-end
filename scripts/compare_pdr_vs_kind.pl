@@ -50,6 +50,10 @@ push (@$Experiments, { "ENGINE" => "pdr" ,
 
 
 push (@$Experiments, { "ENGINE" => "kind" ,        
+		       "PROP_DEF" => " --enable_phig",
+		       "PROP_STRING" => '$\Phi^G$' });
+
+push (@$Experiments, { "ENGINE" => "kind" ,        
 		       "PROP_DEF" => " --enable_psi --enable_phig",
 		       "PROP_STRING" => '$\Psi \wedge \Phi^G$' });
 
@@ -97,7 +101,7 @@ foreach my $i (0..$#{$Experiments}) {
      appendFile("current_results.txt",Dumper($R));
 
      system('mkdir '.$log_file_name.'');
-     system('cp dump.abc dump.aig current_results.txt '.$log_file_name.'/');
+     system('cp dump.abc dump.aig dump.v current_results.txt '.$log_file_name.'/');
      system('tar -czf log/'.$log_file_name.'.tar.gz '.$log_file_name.'/');
      system('rm -r '.$log_file_name.'');
 }
@@ -116,13 +120,14 @@ sub print_table {
 
      my $t = "% \n";
      $t .= "% ".$0."\n";
+     $t .= "% ".$Network;
      $t .= "% ".$Timestamp;
      $t .= "% ".Dumper($Timeout);
      $t .= sprintf ("%12s & %6s & %6s & %6s & %42s \\\\ \\hline \\hline\n",
 		    "Runtime (s)", "Frames", "Proved", "Engine","Property");
 
      foreach my $i (0..$#$r) {
-	  $t .= sprintf ("%12.2f & %6s & %6s & %6s & %42s \\\\ \\hline \n",
+	  $t .= sprintf ("%12.2f & %6s & %6s & %6s & %50s \\\\ \\hline \n",
 			 $r->[$i]->{RUN_TIME},
 			 $r->[$i]->{FRAMES},
 			 $r->[$i]->{PROVED},
