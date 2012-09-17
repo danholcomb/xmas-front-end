@@ -112,8 +112,6 @@ class Channel : public Hier_Object {
   pair <unsigned int,unsigned int> tBits; //which bits hold timestamp if type is pkt
   pair <unsigned int,unsigned int> dBits; //which bits hold data
 
-
-
 public:
   Init_Port *initiator; // (who controls the irdy/data)
   Targ_Port *target; // (who controls the trdy)
@@ -130,8 +128,8 @@ public:
   void Init(string n, unsigned int w, Hier_Object *p) {
     setPacketType( PACKET_DATA ); // by default -- overwrite by setting
 
-    irdy = new Signal(name+"irdy");
-    trdy = new Signal(name+"trdy");
+    irdy = (new Signal(name+"irdy"))->setWidth(1);
+    trdy = (new Signal(name+"trdy"))->setWidth(1);
 
     data = (new Signal(name+"data")) 
       -> setExpr((new Bvconst_Expr(1))->setWidth(w) );
@@ -164,9 +162,6 @@ public:
   void setPacketType(PacketType t) { type = t; return; }
   PacketType getPacketType() { return type; }
 
-  //  void setDataWidth(unsigned int w) { width = w;}
-  //  void widenData(unsigned int w) { width += w;}
-//   unsigned int getDataWidth() { return width;}
  
   void setIrdyPersistant() { assertIrdyPersistant = true; return; }
   void setTrdyPersistant() { assertTrdyPersistant = true; return; }
@@ -186,12 +181,6 @@ public:
     
     ASSERT(this->target!=0);    
     ASSERT(this->initiator!=0);    
-
-//     irdy = new Signal(name+"irdy");
-//     trdy = new Signal(name+"trdy");
-
-//     data = (new Signal(name+"data")) 
-//       -> setExpr((new Bvconst_Expr(1))->setWidth(width) );
 
     Signal *xfer = (new Signal(name+"xfer"))
       -> setExpr( (new And_Expr(irdy,trdy))  );
@@ -484,27 +473,9 @@ public:
     else  { ASSERT(0); }
 
     //determine the bitwidths to use
-    //unsigned int wOracle = o->channel->getDataWidth(); 
-    //unsigned int wOracle = o->channel->data->getWidth(); //getDataWidth(); 
-    //unsigned int wData ;
     unsigned int wData = o->channel->data->getWidth();
-    
     unsigned int wOracle = o->channel->getDWidth();
-    //wData - alogic::c->wClk;
-
-//     if (o->channel->getPacketType() == PACKET_DATA)
-//       wData = wOracle + logic::c->wClk;
-//     else
-//       wData = wOracle;
-
-
-//     if (o->channel->getPacketType() == PACKET_DATA)
-//       wData = wOracle + logic::c->wClk;
-//     else
-//       wData = wOracle;
-
     cout << "wData: " << wData << " wOracle: " << wOracle << "\n";
-    //    ASSERT(wOracle + logic::c->wClk == o->channel->data->getWidth());
     ASSERT(wOracle + logic::c->wClk == wData);
 
     unsigned int lsb = logic::c->oracleBus->getWidth();
@@ -543,19 +514,16 @@ public:
     if (source_type == ORACLE_EAGER)
       {
 	o->channel->qos->updateInitiatorBound(0);
-	//      o->channel->updateAgeBound(0, modifiedChannels);
       }
 
     if (o->channel->qos->hasTargetResponseBound())
       {
 	o->channel->qos->updateAgeBound(o->channel->qos->getTargetResponseBound() );
       }
-    //    if ((source_type == ND) and (o->channel->qos->hasTargetBound() ))
     if (o->channel->qos->hasTargetBound())
       {
 	o->channel->qos->updateAgeBound(o->channel->qos->getTargetBound());
       }    
-    //    cout << "done checking\n";
 
     return;
   }  
@@ -566,7 +534,6 @@ public:
 // channel bounds.
 
 Signal * intervalMonitor( Expr * a, Expr * b, unsigned int t, string name) {
-  //assert 
 
   //  unsigned int w = numBitsRequired(t); 
   unsigned int w = numBitsRequired(t+1); 
@@ -1028,9 +995,9 @@ void Queue::buildPrimitiveLogic ( ) {
 		    //		    -> addInput (new Not_Expr(write_bslot))
 		    );
 
-      Signal *foo = (new Signal(name+"readNeqWrite"))
-	-> setExpr(new Not_Expr(new And_Expr(write_bslot, read_bslot)));
-      foo->assertSignalTrue();
+      //Signal *foo = (new Signal(name+"readNeqWrite"))
+      // -> setExpr(new Not_Expr(new And_Expr(write_bslot, read_bslot)));
+      //foo->assertSignalTrue();
 
       nxt_buffer 
 	-> setExpr( (new Case_Expr())
@@ -1065,6 +1032,8 @@ void Queue::buildPrimitiveLogic ( ) {
       
     }
   
+  ASSERT(qslots[0]->getWidth() == wPacket);
+  //  o_data    ->setExpr( (new Id_Expr( qslots[0]))->setWidth(wPacket) );
   o_data    ->setExpr( (new Id_Expr( qslots[0]))->setWidth(wPacket) );
 
   if (logic::c->voptions->isEnabledPsi) 
@@ -1528,40 +1497,35 @@ public:
   void buildPrimitiveLogic ( ) {
 
     unsigned int w = o->channel->data->getWidth();
-//     ASSERT (w == a->channel->getDataWidth());
-//     ASSERT (w == b->channel->getDataWidth());
     ASSERT (w == a->channel->data->getWidth());
     ASSERT (w == b->channel->data->getWidth());
-
-//     unsigned int w = o->channel->getDataWidth();
-//     ASSERT (w == a->channel->getDataWidth());
-//     ASSERT (w == b->channel->getDataWidth());
-//     ASSERT (w == a->channel->data->getWidth());
   
-    Signal *a_irdy = new Signal(name+"a_irdy" );
-    Signal *a_data = new Signal(name+"a_data" );
-    Signal *a_trdy = new Signal(name+"a_trdy" );
+    Signal *a_irdy = (new Signal(name+"a_irdy" ))->setWidth(1);
+    Signal *a_data = (new Signal(name+"a_data" ))->setWidth(w);
+    Signal *a_trdy = (new Signal(name+"a_trdy" ))->setWidth(1);
 
     a_irdy             -> setExpr( new Id_Expr(1     , a->channel->irdy) );
     a_data             -> setExpr( new Id_Expr(w , a->channel->data) );
     a->channel->trdy   -> setExpr( new Id_Expr(1     , a_trdy));
 
-    Signal *b_irdy = new Signal(name+"b_irdy" );
-    Signal *b_data = new Signal(name+"b_data" );
-    Signal *b_trdy = new Signal(name+"b_trdy" );
+
+    Signal *b_irdy = (new Signal(name+"b_irdy" ))->setWidth(1);
+    Signal *b_data = (new Signal(name+"b_data" ))->setWidth(w);
+    Signal *b_trdy = (new Signal(name+"b_trdy" ))->setWidth(1);
     
     b_irdy            -> setExpr( new Id_Expr(1     , b->channel->irdy ) );
     b_data            -> setExpr( new Id_Expr(w , b->channel->data ) );
     b->channel->trdy  -> setExpr( new Id_Expr(1     , b_trdy) );
     
-    Signal *o_irdy = new Signal(name+"o_irdy" );
-    Signal *o_data = new Signal(name+"o_data" );
-    Signal *o_trdy = new Signal(name+"o_trdy" );
+    Signal *o_irdy = (new Signal(name+"o_irdy" ))->setWidth(1);
+    Signal *o_data = (new Signal(name+"o_data" ))->setWidth(w);
+    Signal *o_trdy = (new Signal(name+"o_trdy" ))->setWidth(1);
 
     o->channel->data   -> setExpr( new Id_Expr(w , o_data) );
     o->channel->irdy   -> setExpr( new Id_Expr(1     , o_irdy) );
     o_trdy             -> setExpr( new Id_Expr(1     , o->channel->trdy ) );
     o_irdy             -> setExpr( new Or_Expr( a_irdy , b_irdy) );
+
         
     Signal *u_nxt = new Signal(name+"u_nxt");
         
@@ -1726,10 +1690,13 @@ public:
 //     ASSERT (w == a->channel->getDataWidth() );
 //     ASSERT (w == b->channel->getDataWidth() );
 
-    Signal *a_irdy = new Signal(name+"a_irdy");
-    Signal *a_data = new Signal(name+"a_data");
-    Signal *a_trdy = new Signal(name+"a_trdy");
-
+    Signal *a_irdy = (new Signal(name+"a_irdy"))->setWidth(1);
+    Signal *a_data = (new Signal(name+"a_data"))->setWidth(w);
+    Signal *a_trdy = (new Signal(name+"a_trdy"))->setWidth(1);
+    
+    ASSERT(1 == a->channel->irdy->getWidth());
+    ASSERT(w == a->channel->data->getWidth());
+    ASSERT(1 == a->channel->trdy->getWidth());
     a_irdy            -> setExpr( new Id_Expr(1 , a->channel->irdy ) );
     a_data            -> setExpr( new Id_Expr(w , a->channel->data ) );
     a->channel->trdy  -> setExpr( new Id_Expr(1 , a_trdy           ) );
@@ -1837,10 +1804,6 @@ public:
     ASSERT (w == portA->channel->data->getWidth());
     ASSERT (w == portB->channel->data->getWidth());
 
-//     unsigned int w = portI->channel->getDataWidth();
-//     ASSERT (w == portA->channel->getDataWidth());
-//     ASSERT (w == portB->channel->getDataWidth());
-    
     Signal *i_irdy = new Signal(name+"i_irdy");
     Signal *i_data = new Signal(name+"i_data");
     Signal *i_trdy = new Signal(name+"i_trdy");
@@ -1893,10 +1856,6 @@ public:
     (*network::n).primitives.push_back(this);
   }
 
-  //   void buildNetworkObject ( Network *n) {
-  //     (*n).primitives.push_back(this);
-  //     return;
-  //   }
 
   void propagateLatencyLemmas( ) {
 
@@ -1931,9 +1890,6 @@ public:
     ASSERT (w == portA->channel->data->getWidth());
     ASSERT (w == portB->channel->data->getWidth());
 
-//     unsigned int w = portI->channel->getDataWidth();
-//     ASSERT (w == portA->channel->getDataWidth());
-//     ASSERT (w == portB->channel->getDataWidth());
     
     Signal *i_irdy = new Signal(name+"i_irdy");
     Signal *i_data = new Signal(name+"i_data");
@@ -2055,18 +2011,18 @@ class Ex_Tree : public Composite {
 public:
   Ex_Tree(string n, Hier_Object *p) : Composite(n,p) {
 
-    Channel *a = new Channel("a",10,this);
-    Channel *b = new Channel("b",10,this);
-    Channel *c = new Channel("c",10,this);
-    Channel *d = new Channel("d",10,this);
-    Channel *e = new Channel("e",10,this);
-    Channel *f = new Channel("f",10,this);
-    Channel *g = new Channel("g",10,this);
-    Channel *h = new Channel("h",10,this);
-    Channel *i = new Channel("i",10,this);
-    Channel *j = new Channel("j",10,this);
-    Channel *k = new Channel("k",10,this);
-    Channel *l = new Channel("l",10,this);
+    Channel *a = new Channel("a",4,this);
+    Channel *b = new Channel("b",4,this);
+    Channel *c = new Channel("c",4,this);
+    Channel *d = new Channel("d",4,this);
+    Channel *e = new Channel("e",4,this);
+    Channel *f = new Channel("f",4,this);
+    Channel *g = new Channel("g",4,this);
+    Channel *h = new Channel("h",4,this);
+    Channel *i = new Channel("i",4,this);
+    Channel *j = new Channel("j",4,this);
+    Channel *k = new Channel("k",4,this);
+    Channel *l = new Channel("l",4,this);
                 
     Source *src_a = new Source(a,"src_a",this);
     Source *src_c = new Source(c,"src_c",this);
@@ -2210,15 +2166,13 @@ public:
 
     Queue *q1 = new Queue(a,b,2,"q1",this);
     new Merge(b,c,d,"m1",this);
-
     Queue *q2 = new Queue(d,e,2,"q2",this);
+    new Merge(e,f,g,"m2",this);
 
 //     q2 -> slotQos[1] -> disable(); 
 //     q2 -> slotQos[0] -> disable(); 
 //    q2 -> slotQos[1] -> disable(); 
 //    q2 -> slotQos[0] -> disable(); 
-
-    new Merge(e,f,g,"m2",this);
 
     Sink *sink_g = new Sink(g,"sink_g",this);
 
@@ -2227,6 +2181,47 @@ public:
     (src_a)->setTypeNondeterministic();
     (src_c)->setTypeNondeterministic();
     (src_f)->setTypeNondeterministic();
+        
+  }
+};
+
+class Ex_Tree3 : public Composite {
+public:
+  Ex_Tree3(string n, Hier_Object *p) : Composite(n,p) {
+
+    Channel *a = new Channel("a",4,this);
+    Channel *b = new Channel("b",4,this);
+    Channel *c = new Channel("c",4,this);
+    Channel *d = new Channel("d",4,this);
+
+    Channel *e = new Channel("e",4,this);
+    Channel *f = new Channel("f",4,this);
+    Channel *g = new Channel("g",4,this);
+
+    Channel *h = new Channel("h",4,this);
+    Channel *i = new Channel("i",4,this);
+    Channel *j = new Channel("j",4,this);
+                
+    Source *src_a = new Source(a,"src_a",this);
+    Source *src_c = new Source(c,"src_c",this);
+    Source *src_f = new Source(f,"src_f",this);
+    Source *src_i = new Source(i,"src_i",this);
+
+    Queue *q1 = new Queue(a,b,2,"q1",this);
+    new Merge(b,c,d,"m1",this);
+    Queue *q2 = new Queue(d,e,2,"q2",this);
+    new Merge(e,f,g,"m2",this);
+    Queue *q3 = new Queue(g,h,2,"q3",this);
+    new Merge(h,i,j,"m3",this);
+
+
+    Sink *sink_j = new Sink(j,"sink_j",this);
+
+    (sink_j)->setTypeBoundedResponse(1);
+    (src_a)->setTypeNondeterministic();
+    (src_c)->setTypeNondeterministic();
+    (src_f)->setTypeNondeterministic();
+    (src_i)->setTypeNondeterministic();
         
   }
 };
@@ -2340,6 +2335,7 @@ int main (int argc, char **argv)
   else if (network == "ex_tree0")           {  new Ex_Tree0(        "top",hier_root ); } 
   else if (network == "ex_tree1")           {  new Ex_Tree1(        "top",hier_root ); } 
   else if (network == "ex_tree2")           {  new Ex_Tree2(        "top",hier_root ); } 
+  else if (network == "ex_tree3")           {  new Ex_Tree3(        "top",hier_root ); } 
   else if (network == "ex_queue")           {  new Ex_Queue(        "top",hier_root ); } 
   else if (network == "ex_queue_chain")     {  new Ex_Queue_Chain(  "top",hier_root ); } 
   else if (network == "ex_join")            {  new Ex_Join(         "top",hier_root ); } 

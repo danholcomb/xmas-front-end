@@ -248,6 +248,7 @@ class Not_Expr : public Expr {
   Expr *_a;
  public:
  Not_Expr(Expr *a ) : Expr(1) {
+    ASSERT(a->getWidth() == 1);
     _a = a;
   }
 
@@ -263,6 +264,7 @@ class Id_Expr : public Expr {
   Expr *_a;
  public:
  Id_Expr(unsigned int w, Expr *a ) : Expr(w) {
+  ASSERT(w == a->getWidth());
     _a = a;
   }
  Id_Expr(Expr *a ) : Expr() {
