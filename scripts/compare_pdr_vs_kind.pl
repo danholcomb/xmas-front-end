@@ -29,29 +29,37 @@ print "\n";
 
 
 my $Timestamp = `date`;
-my $t_max = 15;
 my $Experiments = ();
 
 # each experiment is one row of the table
 push (@$Experiments, { "ENGINE" => "pdr" ,        
-		       "PROP_DEF" => " --disable_lemmas --disable_psi",
+		       "PROP_DEF" => " --enable_phig",
 		       "PROP_STRING" => '$\Phi^G$' });
 
 push (@$Experiments, { "ENGINE" => "pdr" ,        
-		       "PROP_DEF" => " --disable_lemmas --enable_psi",
+		       "PROP_DEF" => " --enable_phig --enable_psi",
 		       "PROP_STRING" => '$\Psi \wedge \Phi^G$' });
 
 push (@$Experiments, { "ENGINE" => "pdr" ,        
-		       "PROP_DEF" => " --enable_lemmas --enable_psi",
+		       "PROP_DEF" => " --enable_lemmas --enable_phig --enable_psi",
 		       "PROP_STRING" => '$\Phi^L \wedge \Psi \wedge \Phi^G$' });
 
+push (@$Experiments, { "ENGINE" => "pdr" ,        
+		       "PROP_DEF" => " --enable_lemmas --enable_phig --enable_psi --enable_bound_channel --enable_response_bound_channel",
+		       "PROP_STRING" => '$\Phi^L \wedge \Psi \wedge \Phi^G$ \wedge Channel' });
+
+
 push (@$Experiments, { "ENGINE" => "kind" ,        
-		       "PROP_DEF" => " --disable_lemmas --enable_psi",
+		       "PROP_DEF" => " --enable_psi --enable_phig",
 		       "PROP_STRING" => '$\Psi \wedge \Phi^G$' });
 
 push (@$Experiments, { "ENGINE" => "kind" ,        
-		       "PROP_DEF" => " --enable_lemmas --enable_psi",
+		       "PROP_DEF" => " --enable_lemmas --enable_phig --enable_psi",
 		       "PROP_STRING" => '$\Phi^L \wedge \Psi \wedge \Phi^G$' });
+
+push (@$Experiments, { "ENGINE" => "kind" ,        
+		       "PROP_DEF" => " --enable_lemmas --enable_phig --enable_psi --enable_bound_channel --enable_response_bound_channel",
+		       "PROP_STRING" => '$\Phi^L \wedge \Psi \wedge \Phi^G$ \wedge Channel' });
 
 
 print Dumper($Experiments);
@@ -65,7 +73,7 @@ foreach my $i (0..$#{$Experiments}) {
      my $prop_string  = $Experiments->[$i]->{PROP_STRING};
      my $engine       = $Experiments->[$i]->{ENGINE};
 
-     system('./dump.out --network '.$Network.' --t_max '.$t_max.' '.$prop_def.' --dump dump.v');
+     system('./dump.out --network '.$Network.' '.$prop_def.' --dump dump.v');
      system('v2aig.sh dump.v');
      system('ulimit -St '.$Timeout.'; abc-'.$engine.'.sh dump.aig');     
      my $out = readFileScalar('dump.abc');

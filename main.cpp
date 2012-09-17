@@ -1148,6 +1148,10 @@ void Ckt::buildNetworkLogic(Network *n) {
       voptions->setTMax(maxLatency); 
     }
 
+  // using phiG but have not manually assigned it
+  if (logic::c->voptions->isEnabledPhiGQueue and not logic::c->voptions->hasTMax())
+    logic::c->voptions->setTMax(maxLatency);
+
   if (logic::c->voptions->isEnabledPhiLQueue and logic::c->voptions->isEnabledPhiGQueue)
     ASSERT2(maxLatency <= voptions->getTMax(),"tmax was set smaller than largest lemma time"); 
 
@@ -1261,7 +1265,9 @@ Signal * BvIncrExprModM (Expr *a, unsigned int m, string name) {
   // this is needed to rule bad states in induction
   Signal *withinRange = (new Signal(name+"withinRange"))
     -> setExpr( new Lt_Expr (a, new Bvconst_Expr(m,w)));
-  withinRange->assertSignalTrue();
+  
+  if (logic::c->voptions->isEnabledPsi)
+    withinRange->assertSignalTrue();
 		
 
 
@@ -2140,7 +2146,7 @@ public:
     Sink *sink_d = new Sink(d,"sink_l",this);
 
     //(sink_d)->setTypeEager();
-    (sink_d)->setTypeBoundedResponse(2);
+    (sink_d)->setTypeBoundedResponse(1);
     (src_a)->setTypeNondeterministic();
     (src_c)->setTypeNondeterministic();
         
@@ -2258,14 +2264,14 @@ class Ex_Queue_Chain : public Composite {
 public:
   Ex_Queue_Chain(string n, Hier_Object *p) : Composite(n,p) {
 
-    Channel *a = new Channel("a",10,this);
-    Channel *b = new Channel("b",10,this);
-    Channel *c = new Channel("c",10,this);
-    Channel *d = new Channel("d",10,this);
-    a->setPacketType(PACKET_DATA);
-    b->setPacketType(PACKET_DATA);
-    c->setPacketType(PACKET_DATA);
-    d->setPacketType(PACKET_DATA);
+    Channel *a = new Channel("a",4,this);
+    Channel *b = new Channel("b",4,this);
+    Channel *c = new Channel("c",4,this);
+    Channel *d = new Channel("d",4,this);
+//     a->setPacketType(PACKET_DATA);
+//     b->setPacketType(PACKET_DATA);
+//     c->setPacketType(PACKET_DATA);
+//     d->setPacketType(PACKET_DATA);
                 
     Source *src_a = new Source(a,"src_a",this);
 
@@ -2309,6 +2315,8 @@ int main (int argc, char **argv)
       } else if ( s == "--disable_persistance")            { logic::c->voptions->disablePersistance();
       } else if ( s ==  "--enable_lemmas")                 { logic::c->voptions->enablePhiLQueue();
       } else if ( s == "--disable_lemmas")                 { logic::c->voptions->disablePhiLQueue();
+      } else if ( s ==  "--enable_phig")                   { logic::c->voptions->enablePhiGQueue();
+      } else if ( s == "--disable_phig")                   { logic::c->voptions->disablePhiGQueue();
       } else if ( s ==  "--enable_psi")                    { logic::c->voptions->enablePsi() ;
       } else if ( s == "--disable_psi")                    { logic::c->voptions->disablePsi(); 
       } else if ( s == "--enable_bound_channel")           { logic::c->voptions->enableBoundChannel();

@@ -70,6 +70,8 @@ class Verification_Settings {
     isEnabledPersistance = false;
   };
 
+  
+
   void  enableBoundChannel() { isEnabledBoundChannel = true;}
   void disableBoundChannel() { isEnabledBoundChannel = false;}
   void  enableResponseBoundChannel() { isEnabledResponseBoundChannel = true;}
@@ -79,6 +81,8 @@ class Verification_Settings {
   void disablePersistance() { isEnabledPersistance = false;}
   void  enablePhiLQueue() { isEnabledPhiLQueue = true;}
   void disablePhiLQueue() { isEnabledPhiLQueue = false;}
+  void  enablePhiGQueue() { isEnabledPhiGQueue = true;}
+  void disablePhiGQueue() { isEnabledPhiGQueue = false;}
   void  enablePsi() { isEnabledPsi = true;}
   void disablePsi() { isEnabledPsi = false;}
 
