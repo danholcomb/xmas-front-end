@@ -61,7 +61,7 @@ class Verification_Settings {
   bool isEnabledPersistance;
 
   Verification_Settings() { 
-    tMax = 20;
+    tMax = T_PROP_NULL;
     isEnabledPhiLQueue = false;
     isEnabledPhiGQueue = false;
     isEnabledResponseBoundChannel = false;
@@ -89,6 +89,7 @@ class Verification_Settings {
   }
 
   unsigned int getTMax() {return tMax;}
+  bool hasTMax() {return tMax != T_PROP_NULL;}
 
   void printSettings() {
     cout 
@@ -282,11 +283,15 @@ class Slot_Qos {
   unsigned int maxAge;
   Queue * parentQueue;
   unsigned int slotIndexInParentQueue;
-
+  bool _isEnabled;
   string printHeader();
 
  public:
   Slot_Qos(unsigned int i, Queue *q);
+
+  bool isEnabled() { return _isEnabled;}
+  void enable() { _isEnabled = true; return;}
+  void disable() { _isEnabled = false; return;}
 
   bool         hasTimeToSink()                 {return timeToSink != T_PROP_NULL;};
   unsigned int getTimeToSink()                 {return timeToSink;};

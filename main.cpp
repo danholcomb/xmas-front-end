@@ -109,6 +109,10 @@ class Channel : public Hier_Object {
   PacketType type;
   bool assertIrdyPersistant;
   bool assertTrdyPersistant;
+  pair <unsigned int,unsigned int> tBits; //which bits hold timestamp if type is pkt
+
+
+
 public:
   Init_Port *initiator; // (who controls the irdy/data)
   Targ_Port *target; // (who controls the trdy)
@@ -123,6 +127,14 @@ public:
   Channel(string n, unsigned int w, Hier_Object *p) : Hier_Object(n,p) { Init(n,w,p);  }
 
   void Init(string n, unsigned int w, Hier_Object *p) {
+    setPacketType( PACKET_DATA ); // by default -- overwrite by setting
+
+    irdy = new Signal(name+"irdy");
+    trdy = new Signal(name+"trdy");
+
+    data = (new Signal(name+"data")) 
+      -> setExpr((new Bvconst_Expr(1))->setWidth(w) );
+
     setDataWidth(w); 
     initiator = NULL;
     target = NULL;
@@ -132,6 +144,16 @@ public:
     (*network::n).channels.push_back(this);
   }
 
+  void widenForTimestamp( unsigned int wClk) {
+    unsigned int wOrig = data->getWidth();
+    unsigned int wNew = wOrig + wClk;
+    tBits = make_pair(wNew-1 , wOrig); //msb is first
+    data -> setWidth(wNew);
+    cout << "\nwidened " << data->getName() << " to width = " << data->getWidth() << "\n\n";
+    return;
+  }
+
+  pair <unsigned int,unsigned int> getTBits () {return tBits;}
 
   void setPacketType(PacketType t) { type = t; return; }
   PacketType getPacketType() { return type; }
@@ -159,11 +181,11 @@ public:
     ASSERT(this->target!=0);    
     ASSERT(this->initiator!=0);    
 
-    irdy = new Signal(name+"irdy");
-    trdy = new Signal(name+"trdy");
+//     irdy = new Signal(name+"irdy");
+//     trdy = new Signal(name+"trdy");
 
-    data = (new Signal(name+"data")) 
-      -> setExpr((new Bvconst_Expr(1))->setWidth(width) );
+//     data = (new Signal(name+"data")) 
+//       -> setExpr((new Bvconst_Expr(1))->setWidth(width) );
 
     Signal *xfer = (new Signal(name+"xfer"))
       -> setExpr( (new And_Expr(irdy,trdy))  );
@@ -223,7 +245,6 @@ public:
       {
 	aImpliesBoundedFutureB(bvtrue, irdy, qos->getInitiatorBound(), name+"IB");
       }
-    // need to add same for initiatiors
 
     return;
   }
@@ -457,12 +478,19 @@ public:
     else  { ASSERT(0); }
 
     //determine the bitwidths to use
-    unsigned int wOracle = o->channel->getDataWidth(); 
-    unsigned int wData;
+    //unsigned int wOracle = o->channel->getDataWidth(); 
+    unsigned int wOracle = o->channel->data->getWidth(); //getDataWidth(); 
+    //    unsigned int wData ;
+    unsigned int wData = o->channel->data->getWidth();
+    wOracle = wData - logic::c->wClk;
+
+    cout << "wData: " << wData << " wOracle: " << wOracle << "\n";
     if (o->channel->getPacketType() == PACKET_DATA)
       wData = wOracle + logic::c->wClk;
     else
       wData = wOracle;
+
+    ASSERT(wOracle + logic::c->wClk == o->channel->data->getWidth());
 
     unsigned int lsb = logic::c->oracleBus->getWidth();
     unsigned msb = lsb + wOracle - 1;
@@ -503,14 +531,6 @@ public:
 	//      o->channel->updateAgeBound(0, modifiedChannels);
       }
 
-    //     if (source_type == BND)
-    //       {
-    // 	o->channel->updateInitiatorResponseBound(0, modifiedChannels);
-    // 	//o->channel->updateInitiatorResponseBound(0, modifiedChannels);
-    //       }
-
- 
-    //    if ((source_type == ND) and (o->channel->hasTargetResponseBound() ))
     if (o->channel->qos->hasTargetResponseBound())
       {
 	o->channel->qos->updateAgeBound(o->channel->qos->getTargetResponseBound() );
@@ -523,19 +543,18 @@ public:
     //    cout << "done checking\n";
 
     return;
-  }
-  
+  }  
 };
 
-
-
-
-// a counter that asserts an outputs if x cycles elapse between a and b.
+// a counter that asserts an outputs if t cycles elapse between a and b.
 // used for enforcing bounds on sources and sinks, and for checking
 // channel bounds.
 
 Signal * intervalMonitor( Expr * a, Expr * b, unsigned int t, string name) {
-  unsigned int w = numBitsRequired(t); 
+  //assert 
+
+  //  unsigned int w = numBitsRequired(t); 
+  unsigned int w = numBitsRequired(t+1); 
   Signal *cntPlus1 = (new Signal(name+"cntPlus1"))->setWidth(w);
 
   Seq_Signal *cnt = (new Seq_Signal(name+"cnt"))->setWidth(w);
@@ -559,9 +578,18 @@ Signal * intervalMonitor( Expr * a, Expr * b, unsigned int t, string name) {
     -> setExpr( 
 	       (new Bvadd_Expr( cnt , new Bvconst_Expr(1,w) ))->setWidth(w) 
 		);
+
+  //  Expr *intervalValid = new Lte_Expr( cnt 
+  Expr *intervalValid = new Lt_Expr( nxtCnt 
+				      , new Bvconst_Expr(t,w) 
+				      );
+  // 				      , cnt 
+// 					    ) 
+// 			       )
 	
   Signal *intervalViolated = (new Signal(name+"intervalViolated"))
-    -> setExpr ( new Lt_Expr( new Bvconst_Expr(t,w) , cnt ) );
+    //        -> setExpr ( new Not_Expr (intervalValid) );
+  -> setExpr ( new Lt_Expr( new Bvconst_Expr(t,w) , cnt ) );
   
   return intervalViolated;
 }
@@ -600,6 +628,13 @@ public:
       //      i->channel->updateInitiatorResponseBound(responseBound, modifiedChannels);
       //i->channel->qos->updateTargetResponseBound(responseBound, modifiedChannels);
       i->channel->qos->updateTimeToSinkBound(bound);
+    }
+
+    if (sink_type == ORACLE_EAGER) { 
+      i->channel->qos->updateTargetBound(1);
+      //      i->channel->updateInitiatorResponseBound(responseBound, modifiedChannels);
+      //i->channel->qos->updateTargetResponseBound(responseBound, modifiedChannels);
+      i->channel->qos->updateTimeToSinkBound(1);
     }
 
 
@@ -676,6 +711,7 @@ string Slot_Qos::printHeader() {
 };
 
 Slot_Qos::Slot_Qos(unsigned int i, Queue *q) {
+  enable();
   slotIndexInParentQueue = i;
   parentQueue = q;
   timeToSink = T_PROP_NULL;
@@ -800,7 +836,8 @@ void Queue::buildPrimitiveLogic ( ) {
 
 
   //check the base size (without timestamp), and also the type
-  ASSERT( i->channel->getDataWidth() == o->channel->getDataWidth() );
+  //  ASSERT( i->channel->getDataWidth() == o->channel->getDataWidth() );
+  ASSERT( i->channel->data->getWidth() == o->channel->data->getWidth() );
   ASSERT( getPacketType() == i->channel->getPacketType() );
   ASSERT( getPacketType() == o->channel->getPacketType() );
   ASSERT( depth == qslots.size() );
@@ -809,13 +846,16 @@ void Queue::buildPrimitiveLogic ( ) {
 
 
   unsigned int wDepth = numBitsRequired(physicalDepth); 
-  unsigned int wPacket = i->channel->getDataWidth();
+  //  unsigned int wPacket = i->channel->getDataWidth();
+  unsigned int wPacket = i->channel->data->getWidth();
   pair <unsigned int,unsigned int> tBits; //which bits hold timestamp
+  
 
   if (getPacketType() == PACKET_DATA)
     {
-      wPacket += logic::c->wClk; 
-      tBits = make_pair(wPacket-1, i->channel->getDataWidth()); //msb is first
+      tBits = i->channel->getTBits();
+//       wPacket += logic::c->wClk; 
+//       tBits = make_pair(wPacket-1, i->channel->getDataWidth()); //msb is first
     } 
 
   
@@ -899,10 +939,8 @@ void Queue::buildPrimitiveLogic ( ) {
     -> setResetExpr( (new Bvconst_Expr(0)) -> setWidth(wDepth) )
     -> setNxtExpr (nxt_tail);
   
-  Signal *tail_plus_1 = BvIncrExprModM(tail, physicalDepth, name);
+  Signal *tail_plus_1 = BvIncrExprModM(tail, physicalDepth, name+"tailPlus1ModM");
   
-
-
   nxt_tail
     -> setName(name+"nxt_tail")
     -> setExpr( (new Case_Expr())
@@ -920,7 +958,6 @@ void Queue::buildPrimitiveLogic ( ) {
     -> setNxtExpr ( nxt_head );
 
   Signal *head_plus_1 = BvIncrExprModM(head, physicalDepth, name+"headPlus1ModM");
-
 
   nxt_head 
     -> setName (name+"nxt_head")
@@ -968,18 +1005,22 @@ void Queue::buildPrimitiveLogic ( ) {
 	-> setExpr( new Eq_Expr(bvi, head) );
 
 
-      Signal *clear_bslot = (new Signal())
+      Signal *read_bslot = (new Signal())
 	-> setName(name+"bslot"+itos(i)+"clear")
 	-> setExpr( (new And_Expr())
 		    -> addInput (is_head)
 		    -> addInput (readEnable)
-		    -> addInput (new Not_Expr(write_bslot))
+		    //		    -> addInput (new Not_Expr(write_bslot))
 		    );
+
+      Signal *foo = (new Signal(name+"readNeqWrite"))
+	-> setExpr(new Not_Expr(new And_Expr(write_bslot, read_bslot)));
+      foo->assertSignalTrue();
 
       nxt_buffer 
 	-> setExpr( (new Case_Expr())
 		    -> setDefault(bslots[i])
-		    -> addCase(clear_bslot, bvc_null_pkt)
+		    -> addCase(read_bslot, bvc_null_pkt)
 		    -> addCase(write_bslot, i_data)
 		    -> setWidth(wPacket)
 		    );
@@ -1065,6 +1106,7 @@ void Queue::buildPrimitiveLogic ( ) {
       if (logic::c->voptions->isEnabledPhiLQueue) 
 	{
 	  for (unsigned int i = 0; i<depth; i++) 
+	    if ( slotQos[i]->isEnabled() )
 	    {
 	  
 	      Signal *age_bound = (new Signal())
@@ -1082,6 +1124,7 @@ void Queue::buildPrimitiveLogic ( ) {
       if (logic::c->voptions->isEnabledPhiGQueue) 
 	{
 	  for (unsigned int i = 0; i<depth; i++) 
+	    if ( slotQos[i]->isEnabled() )
 	    {
 
 	      Signal *age_bound = (new Signal())
@@ -1113,14 +1156,30 @@ void Ckt::buildNetworkLogic(Network *n) {
   for (vector <Queue*>::iterator it = n->queues.begin(); it != n->queues.end(); it++ ) 
     for (int i = (*it)->qslots.size()-1 ; i >= 0 ; i--) 
       maxLatency = max(maxLatency, (*it)->slotQos[i]->getMaxAge() ); 
-  wClk = numBitsRequired( max(maxLatency, voptions->getTMax() ) );
+
+
+  if (logic::c->voptions->isEnabledPhiLQueue and not logic::c->voptions->isEnabledPhiGQueue)
+    {
+      cout << "no global tMax was entered, using " << maxLatency << "\n";
+      voptions->setTMax(maxLatency); 
+    }
+
+  if (logic::c->voptions->isEnabledPhiLQueue and logic::c->voptions->isEnabledPhiGQueue)
+    ASSERT2(maxLatency <= voptions->getTMax(),"tmax was set smaller than largest lemma time"); 
+
+
+
+  if (voptions->hasTMax()) 
+    maxLatency = max(maxLatency, voptions->getTMax() );
+
+  wClk = numBitsRequired( maxLatency );
+  //  wClk = numBitsRequired( max(maxLatency, voptions->getTMax() ) );
       
   cout << "\nglobal latency bound (tMax) is          " << voptions->getTMax() << "\n";
   cout << "largest time from latency lemmas is     " << maxLatency << "\n";
   cout << "clock will use                          " << wClk << " bits\n\n";
 
-  if (logic::c->voptions->isEnabledPhiLQueue)
-    ASSERT(maxLatency <= voptions->getTMax());
+
 
   this->oracleBus = new Oracle_Signal("oracles");
   this->tCurrent = new Seq_Signal("tCurrent");
@@ -1128,8 +1187,6 @@ void Ckt::buildNetworkLogic(Network *n) {
   Signal *tCurrentNxt = (new Signal("tCurrentNxt"));
   tCurrent->setWidth(wClk);
   tCurrentNxt->setWidth(wClk);
-
-
 
   tCurrent 
     -> setResetExpr( (new Bvconst_Expr(0,wClk ))->setWidth(wClk) )
@@ -1140,6 +1197,17 @@ void Ckt::buildNetworkLogic(Network *n) {
   
   tCurrentNxt
     -> setExpr( e );
+
+
+
+  // if channel carries packet, widen it for the timestamp
+  for (vector <Channel*>::iterator it = n->channels.begin(); it != n->channels.end(); it++ )
+    {
+      if ((*it)->getPacketType() == PACKET_DATA) 
+	{
+	  (*it)->widenForTimestamp(wClk);
+	}
+    }
   
   for (vector <Channel*>::iterator it = n->channels.begin(); it != n->channels.end(); it++ )
     (*it)->buildChannelLogic();
@@ -1177,42 +1245,11 @@ void aImpliesBoundedFutureB( Expr * a, Expr * b, unsigned int t, string name) {
 
 
 
-
-
-
-
-
-
-
-// // returns expression for tCurrent - in, modulo max value of circular counter
-// Expr * AgeOfExpr (Expr *in) {
-//   ASSERT(0);
-//   unsigned int w = logic::c->wClk;
-   
-//   // if clk = 0 and injection = 111...1, then age s/b 1. for rollover
-//   // in case 2, do (111...1 - injection + 1) so as not to use any
-//   // numbers exceeding 111...1
-//   double maxval = pow(double(2),double(w))-1;
-
-//   Expr *age_normal = new Bvsub_Expr(w, logic::c->tCurrent, in);
-//   Expr *overflow = new Lt_Expr( logic::c->tCurrent , in);
-//   Expr *x  = new Bvsub_Expr(w, new Bvconst_Expr(maxval,w), in);
-//   Expr *y = new Bvadd_Expr(w, new Bvconst_Expr(1,w) , x);
-//   Expr *age_overflow = new Bvadd_Expr(w,  logic::c->tCurrent , y );
-//   Expr *age = (new Case_Expr(w))
-//     -> setDefault(age_normal)
-//     -> addCase(overflow, age_overflow);
-
-//   return age;
-// };
-
-
 // returns expression for (a - b) % maxval
 Expr * BvsubExprModM (Expr *a, Expr *b , unsigned int maxval, string name) {
 
   unsigned int w = a->getWidth();
   ASSERT(w == b->getWidth());
-  //logic::c->wClk;
    
   // if clk = 0 and injection = 111...1, then age s/b 1. for rollover
   // in case 2, do (111...1 - injection + 1) so as not to use any
@@ -1475,9 +1512,16 @@ public:
 
   void buildPrimitiveLogic ( ) {
 
-    unsigned int w = o->channel->getDataWidth();
-    ASSERT (w == a->channel->getDataWidth());
-    ASSERT (w == b->channel->getDataWidth());
+    unsigned int w = o->channel->data->getWidth();
+//     ASSERT (w == a->channel->getDataWidth());
+//     ASSERT (w == b->channel->getDataWidth());
+    ASSERT (w == a->channel->data->getWidth());
+    ASSERT (w == b->channel->data->getWidth());
+
+//     unsigned int w = o->channel->getDataWidth();
+//     ASSERT (w == a->channel->getDataWidth());
+//     ASSERT (w == b->channel->getDataWidth());
+//     ASSERT (w == a->channel->data->getWidth());
   
     Signal *a_irdy = new Signal(name+"a_irdy" );
     Signal *a_data = new Signal(name+"a_data" );
@@ -2014,12 +2058,11 @@ public:
 
     //Sink *pkt_sink = new Sink(l,"pkt_sink",this);
     Sink *sink_l = new Sink(l,"sink_l",this);
-    (sink_l)->setTypeBoundedResponse(0);
+    (sink_l)->setTypeBoundedResponse(1);
     (src_a)->setTypeNondeterministic();
     (src_c)->setTypeNondeterministic();
     (src_f)->setTypeNondeterministic();
     (src_i)->setTypeNondeterministic();
-
         
   }    
 };
@@ -2100,10 +2143,10 @@ class Ex_Tree1 : public Composite {
 public:
   Ex_Tree1(string n, Hier_Object *p) : Composite(n,p) {
 
-    Channel *a = new Channel("a",10,this);
-    Channel *b = new Channel("b",10,this);
-    Channel *c = new Channel("c",10,this);
-    Channel *d = new Channel("d",10,this);
+    Channel *a = new Channel("a",2,this);
+    Channel *b = new Channel("b",2,this);
+    Channel *c = new Channel("c",2,this);
+    Channel *d = new Channel("d",2,this);
                 
     Source *src_a = new Source(a,"src_a",this);
     Source *src_c = new Source(c,"src_c",this);
@@ -2114,9 +2157,49 @@ public:
     Sink *sink_d = new Sink(d,"sink_l",this);
 
     //(sink_d)->setTypeEager();
-    (sink_d)->setTypeBoundedResponse(3);
+    (sink_d)->setTypeBoundedResponse(2);
     (src_a)->setTypeNondeterministic();
     (src_c)->setTypeNondeterministic();
+        
+  }
+};
+
+class Ex_Tree2 : public Composite {
+public:
+  Ex_Tree2(string n, Hier_Object *p) : Composite(n,p) {
+
+    Channel *a = new Channel("a",4,this);
+    Channel *b = new Channel("b",4,this);
+    Channel *c = new Channel("c",4,this);
+    Channel *d = new Channel("d",4,this);
+
+    Channel *e = new Channel("e",4,this);
+    Channel *f = new Channel("f",4,this);
+    Channel *g = new Channel("g",4,this);
+                
+    Source *src_a = new Source(a,"src_a",this);
+    Source *src_c = new Source(c,"src_c",this);
+    Source *src_f = new Source(f,"src_f",this);
+
+    Queue *q1 = new Queue(a,b,2,"q1",this);
+    new Merge(b,c,d,"m1",this);
+
+    Queue *q2 = new Queue(d,e,2,"q2",this);
+
+//     q2 -> slotQos[1] -> disable(); 
+//     q2 -> slotQos[0] -> disable(); 
+//    q2 -> slotQos[1] -> disable(); 
+    q2 -> slotQos[0] -> disable(); 
+
+    new Merge(e,f,g,"m2",this);
+
+    Sink *sink_g = new Sink(g,"sink_g",this);
+
+    //(sink_d)->setTypeEager();
+    (sink_g)->setTypeBoundedResponse(1);
+    (src_a)->setTypeNondeterministic();
+    (src_c)->setTypeNondeterministic();
+    (src_f)->setTypeNondeterministic();
         
   }
 };
@@ -2126,16 +2209,13 @@ public:
 class Ex_Queue : public Composite {
 public:
   Ex_Queue(string n, Hier_Object *p) : Composite(n,p) {
-    int queue_size = 4;
+    int queue_size = 3;
     int lb_sink = 2; 
     
-    //    Channel *a = new Channel("a",10,this);
     Channel *a = new Channel("a",4,this);
     Channel *b = new Channel("b",4,this);
     a->setPacketType(PACKET_DATA);
     b->setPacketType(PACKET_DATA);
-
-    //a->widenData(2);
 
     Source *src_a = new Source(a,"src_a",this);
     new Queue(a,b,queue_size,"q1",this);
@@ -2188,7 +2268,9 @@ int main (int argc, char **argv)
   logic::c = new Ckt();
 
   //string network = "ex_tree";
-  string network = "ex_queue_chain";
+  //string network = "ex_queue_chain";
+  string network = "ex_tree1";
+  //string network = "ex_queue";
   string fnameOut = "dump.v";
 
 
@@ -2230,6 +2312,7 @@ int main (int argc, char **argv)
   else if (network == "ex_tree")            {  new Ex_Tree(         "top",hier_root ); } 
   else if (network == "ex_tree0")           {  new Ex_Tree0(        "top",hier_root ); } 
   else if (network == "ex_tree1")           {  new Ex_Tree1(        "top",hier_root ); } 
+  else if (network == "ex_tree2")           {  new Ex_Tree2(        "top",hier_root ); } 
   else if (network == "ex_queue")           {  new Ex_Queue(        "top",hier_root ); } 
   else if (network == "ex_queue_chain")     {  new Ex_Queue_Chain(  "top",hier_root ); } 
   else if (network == "ex_join")            {  new Ex_Join(         "top",hier_root ); } 
@@ -2242,6 +2325,7 @@ int main (int argc, char **argv)
 
   logic::c -> voptions->printSettings();
   logic::c -> buildNetworkLogic( network::n );
+  logic::c -> voptions->printSettings();
   //  delete network::n;
 
   logic::c -> dumpAsVerilog( fnameOut );     
