@@ -120,7 +120,7 @@ sub print_table {
 
      my $t = "% \n";
      $t .= "% ".$0."\n";
-     $t .= "% ".$Network;
+     $t .= "% ".$Network."\n";
      $t .= "% ".$Timestamp;
      $t .= "% ".Dumper($Timeout);
      $t .= sprintf ("%12s & %6s & %6s & %6s & %42s \\\\ \\hline \\hline\n",
