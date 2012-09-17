@@ -11,8 +11,8 @@ class Expr {
 
   // dont use pure virtual, because for circular dependencies we
   //  sometimes initialize and then overwrite later
-  //  virtual string printExprVerilog() { ASSERT(0);}
-  virtual string printExprVerilog() { ;}
+  virtual string printExprVerilog() { ASSERT(0); return "";}
+  //virtual string printExprVerilog() { ;}
 
   virtual unsigned int getWidth() {
     return width;
