@@ -1,4 +1,31 @@
+#ifndef MAIN_H
+#define MAIN_H
 
+//#include "blah.h"
+
+#define HIER_SEPARATOR "__"
+ 
+//for timebounds that are not assigned anything meaningful
+#define T_PROP_NULL 999
+
+#define ASSERT(x)					\
+  if (! (x))						\
+    {							\
+      cout << "ERROR!! Assert " << #x << " failed\n";	\
+      cout << " on line " << __LINE__  << "\n";		\
+      cout << " in file " << __FILE__ << "\n";		\
+      exit(1) ;						\
+    }
+
+#define ASSERT2(x,s)					\
+  if (! (x))						\
+    {							\
+      cout << "ERROR!! Assert " << #x << " failed\n";	\
+      cout << " " << s << "\n";				\
+      cout << " on line " << __LINE__  << "\n";		\
+      cout << " in file " << __FILE__ << "\n";		\
+      exit(1) ;						\
+    }
 
 
 
@@ -17,20 +44,23 @@ class Source;
 class Sink;
 class Queue;
 class Verification_Settings;
-class Slot_Qos;
 
 using namespace std;
 
+// global variables
+extern Ckt *g_ckt;         // a collections of expressions/signals/etc
+extern Network *g_network; // a collection of prims/composites/channels/etc
+extern ofstream g_outQos;  // to write qosReport
 
 
-// g is just a generic namespace for global vars and instances
-namespace g {
-  ofstream outQos;
-}
+enum OracleType {
+  ORACLE_EAGER, 
+  ORACLE_DEAD, 
+  ORACLE_NONDETERMINISTIC, 
+  ORACLE_BOUNDED_RESPONSE,
+  ORACLE_BOUNDED
+};
 
-
-namespace network { Network *n; }
-namespace logic {  Ckt *c; }
 
 
 //for queues and channels, this indicates whether to consider
@@ -46,6 +76,44 @@ string itos(int i);
 unsigned int numBitsRequired( unsigned int maxval);
 Signal * BvIncrExprModM (Expr *a, unsigned int m, string name);
 Expr * BvsubExprModM (Expr *a, Expr *b , unsigned int maxval, string name);
+Signal * intervalMonitor( Expr * a, Expr * b, unsigned int t, string name);
+void aImpliesBoundedFutureB( Expr * a, Expr * b, unsigned int t, string name);
+
+
+
+
+
+/*! \brief a port connects a channel to a port of a primitive*/
+class Port  {
+public:
+  Primitive *owner; // primitive that contains the port
+  Channel *channel; // channel that is driven by port
+  string pname;
+  // /* \param n an arbitrary local name for this port within prim (e.g. "a")
+  //   \param c the channel connecting to the port (from outside the owner primitive)
+  //   \param p the primitive that port is being instantiated within
+  // */
+  Port(string n, Channel *c, Primitive *p)
+    {
+      pname = n;
+      owner = p;
+      channel = c;
+    };
+};
+
+/*! \brief port acting as a target to a channel */
+class Init_Port : public Port {
+public:
+  Init_Port(string n, Channel *c, Primitive *p);
+};
+
+
+// /*! \brief port acting as initiator of a channel */
+class Targ_Port : public Port {
+public:
+  Targ_Port(string n, Channel *c, Primitive *p);
+};
+
 
 
 
@@ -142,54 +210,6 @@ class Ckt {
 
 
 
-
-
-
-class Channel_Qos {
-  // unconditionally asserted within time bound (stronger than response)
-  unsigned int targetBound;
-  unsigned int initiatorBound;
-
-  unsigned int targetResponseBound;
-  unsigned int initiatorResponseBound;
-
-  unsigned int timeToSinkBound;
-  unsigned int ageBound;
-  Channel *ch;
-
-  string printHeader();
-
- public:
-  Channel_Qos(Channel *c);
-
-  bool hasTargetResponseBound ();
-  bool hasTargetBound ();
-  bool hasInitiatorResponseBound ();
-  bool hasInitiatorBound ();
-  bool hasTimeToSinkBound ();
-  bool hasAgeBound ();
-
-  // if modifiedChannels bound is lower than current bound, add self to modified set
-  void updateTargetResponseBound( unsigned int b);
-  void updateInitiatorResponseBound( unsigned int b);
-  void updateTargetBound( unsigned int b);
-  void updateInitiatorBound( unsigned int b);
-  void updateTimeToSinkBound( unsigned int t);
-  void updateAgeBound( unsigned int t);
-
-  unsigned int getTargetResponseBound ()    ;
-  unsigned int getTargetBound ()            ;
-  unsigned int getInitiatorResponseBound () ;
-  unsigned int getInitiatorBound ()         ;
-  unsigned int getTimeToSinkBound ()        ;
-  unsigned int getAgeBound ()               ;
-
-  void printChannelQos (ostream &f);
-
-};
-
-
-
 class Network {
  public:
   Network( ) {;}
@@ -214,11 +234,6 @@ class Network {
 
 
 
-
-
-
-
-
 /*!A Hier Object is anything in the hierarchy that contains 1 or more
   primitives or composite (e.g. credit loop) objects in its subtree.*/
 class Hier_Object {
@@ -234,78 +249,5 @@ class Hier_Object {
 
 
 
-
-
-
-
-
-
-
-/*! \brief xmas kernel primitive primitives don't have internal
-  channels
-*/
-class Primitive : public Hier_Object {
- public:
-  vector <Init_Port *> init_ports;
-  vector <Targ_Port *> targ_ports;
- Primitive(string n, Hier_Object *parent) : Hier_Object(n,parent) { }
-
-  virtual void buildPrimitiveLogic ( ) =0;
-  virtual void propagateLatencyLemmas() {;}
-  void printConnectivity(ostream &f);
-};
-
-
-
-
-
-
-
-
-
-
-class Queue : public Primitive {
-  PacketType type;
- public:
-  Targ_Port *i;
-  Init_Port *o;
-  Signal *numItems;
-  unsigned int numItemsMax;
-  vector <Slot_Qos*> slotQos;
-  vector <Signal*> qslots;
-  unsigned int depth;
-  Queue(Channel *in, Channel *out, unsigned int d, const string n, Hier_Object *p);
-  Queue * setType ( PacketType p);
-  PacketType getPacketType ();
-  void buildPrimitiveLogic ( );
-  void propagateLatencyLemmas( );        
-};
-
-
-
-
-class Slot_Qos {
-  unsigned int timeToSink;
-  unsigned int maxAge;
-  Queue * parentQueue;
-  unsigned int slotIndexInParentQueue;
-  bool _isEnabled;
-  string printHeader();
-
- public:
-  Slot_Qos(unsigned int i, Queue *q);
-
-  bool isEnabled() { return _isEnabled;}
-  void enable() { _isEnabled = true; return;}
-  void disable() { _isEnabled = false; return;}
-
-  bool         hasTimeToSink()                 {return timeToSink != T_PROP_NULL;};
-  unsigned int getTimeToSink()                 {return timeToSink;};
-  bool         hasMaxAge()                     {return maxAge != T_PROP_NULL;};
-  unsigned int getMaxAge()                     {return maxAge;}
-
-  void printSlotQos(ostream &f);
-  void setTimeToSink(unsigned int t);
-  void setMaxAge(unsigned int t);
-};
+#endif
 

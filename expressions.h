@@ -1,28 +1,25 @@
+#ifndef EXPRESSIONS_H
+#define EXPRESSIONS_H
 
 
-/* these are all very simple, just letting them be in header*/
 
 class Expr {
   unsigned int width;
  public:
-
-  Expr(unsigned int w) { setWidth(w); }
-  Expr()               { setWidth(0); }
+  Expr(unsigned int w);
+  Expr();
 
   // dont use pure virtual, because for circular dependencies we
   //  sometimes initialize and then overwrite later
-  virtual string printExprVerilog() { ASSERT(0); return "";}
-  //virtual string printExprVerilog() { ;}
-
-  virtual unsigned int getWidth() {
-    return width;
-  }
-
-  Expr * setWidth( unsigned int w ) {
-    width = w;
-    return this;
-  }
+  virtual std::string printExprVerilog();
+  virtual unsigned int getWidth();
+  Expr * setWidth( unsigned int w );
 };
+
+
+
+
+
 
 
 
@@ -36,18 +33,18 @@ class Case_Expr : public Expr {
  Case_Expr(unsigned int w) : Expr(w) {;}
  Case_Expr() : Expr() {;}
   
-  Case_Expr * setDefault( Expr *r ) { 
-    defaultCase = r; 
+  Case_Expr * setDefault( Expr *r ) {
+    defaultCase = r;
     setWidth( r->getWidth() );
-    return this; 
+    return this;
   };
   
-  Case_Expr * addCase( Expr *cond, Expr *val ) { 
+  Case_Expr * addCase( Expr *cond, Expr *val ) {
     ASSERT2(defaultCase->getWidth() > 0, "must set default expr before case");
     ASSERT2(defaultCase->getWidth() == val->getWidth(), "width mismatch");
     pair <Expr*,Expr*> p = make_pair(cond,val);
     cases.push_back(p);
-    return this; 
+    return this;
   };
 
   string printExprVerilog() {
@@ -61,7 +58,7 @@ class Case_Expr : public Expr {
       ASSERT( c->second->getWidth() == getWidth());
       ASSERT( defaultCase->getWidth() == getWidth());
       
-      out << "\n\t" << c->first->printExprVerilog() 
+      out << "\n\t" << c->first->printExprVerilog()
 	  << " ? " << c->second->printExprVerilog() << " : ";
 
     }
@@ -370,13 +367,13 @@ class Signal : public Expr {
  Signal( string n ) : Expr() {  
     setName(n);
     isAsserted = false;
-    logic::c->signals.push_back(this);
+    g_ckt->signals.push_back(this);
     _e = new Expr();
   };
  Signal(  ) : Expr() {      
     setName("generic");
     isAsserted = false;
-    logic::c->signals.push_back(this);
+    g_ckt->signals.push_back(this);
     _e = new Expr();
   };
 
@@ -501,3 +498,6 @@ class Oracle_Signal : public Signal {
   void declareSignalVerilog(ostream &f) { return ;}
   void assignSignalVerilog(ostream &f) { return;}
 };
+
+
+#endif

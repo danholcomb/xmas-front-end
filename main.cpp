@@ -12,53 +12,21 @@
 #include <cmath>
 #include <unistd.h>
 
-#define HIER_SEPARATOR "__"
- 
-//for timebounds that are not assigned anything meaningful
-#define T_PROP_NULL 999
 
  
-#define ASSERT(x)					\
-  if (! (x))						\
-    {							\
-      cout << "ERROR!! Assert " << #x << " failed\n";	\
-      cout << " on line " << __LINE__  << "\n";		\
-      cout << " in file " << __FILE__ << "\n";		\
-      exit(1) ;						\
-    }
-
-#define ASSERT2(x,s)					\
-  if (! (x))						\
-    {							\
-      cout << "ERROR!! Assert " << #x << " failed\n";	\
-      cout << " " << s << "\n";				\
-      cout << " on line " << __LINE__  << "\n";		\
-      cout << " in file " << __FILE__ << "\n";		\
-      exit(1) ;						\
-    }
 
 #include "main.h"
 #include "expressions.h"
-
+#include "primitives.h"
+#include "channel.h"
 using namespace std;
 
+// globals
+Network *g_network; 
+Ckt *g_ckt;
+ofstream g_outQos;
+
     
-enum OracleType {
-  ORACLE_EAGER, 
-  ORACLE_DEAD, 
-  ORACLE_NONDETERMINISTIC, 
-  ORACLE_BOUNDED_RESPONSE,
-  ORACLE_BOUNDED
-};
-
-
-
-
- 
-
-
-
-
 string itos(int i) {
   std::stringstream out;
   out << i;
@@ -73,10 +41,6 @@ unsigned int numBitsRequired( unsigned int maxval) {
   return w;
 }
 
-
-
-void aImpliesBoundedFutureB( Expr * a, Expr * b, unsigned int t, string name);
- 
 
 
 //root not has no name... (to help keep flat names shorter)
@@ -95,330 +59,16 @@ void Hier_Object::addChild (Hier_Object *x) { children.push_back(x); }
 
 
 
-
-
-
-
-
-
-
-
-/*! \brief connection between two xmas components.*/
-class Channel : public Hier_Object {
-  unsigned int width;
-  PacketType type;
-  bool assertIrdyPersistant;
-  bool assertTrdyPersistant;
-  pair <unsigned int,unsigned int> tBits; //which bits hold timestamp if type is pkt
-  pair <unsigned int,unsigned int> dBits; //which bits hold data
-
-public:
-  Init_Port *initiator; // (who controls the irdy/data)
-  Targ_Port *target; // (who controls the trdy)
-    
-  Signal *irdy;
-  Signal *trdy;
-  Signal *data;
-
-  Channel_Qos *qos;
-  
-  Channel(string n,                 Hier_Object *p) : Hier_Object(n,p) { Init(n,1,p);  }
-  Channel(string n, unsigned int w, Hier_Object *p) : Hier_Object(n,p) { Init(n,w,p);  }
-
-  void Init(string n, unsigned int w, Hier_Object *p) {
-    setPacketType( PACKET_DATA ); // by default -- overwrite by setting
-
-    irdy = (new Signal(name+"irdy"))->setWidth(1);
-    trdy = (new Signal(name+"trdy"))->setWidth(1);
-
-    data = (new Signal(name+"data")) 
-      -> setExpr((new Bvconst_Expr(1))->setWidth(w) );
-    
-
-    dBits = make_pair(w-1 , 0); //msb is first
-    
-    //    setDataWidth(w); 
-    initiator = NULL;
-    target = NULL;
-    assertIrdyPersistant = true;
-    assertTrdyPersistant = true;
-    qos = new Channel_Qos(this);
-    (*network::n).channels.push_back(this);
-  }
-
-  void widenForTimestamp( unsigned int wClk) {
-    unsigned int wOrig = data->getWidth();
-    unsigned int wNew = wOrig + wClk;
-    tBits = make_pair(wNew-1 , wOrig); //msb is first
-    data -> setWidth(wNew);
-    cout << "widened " << data->getName() << " to width = " << data->getWidth() << "\n";
-    return;
-  }
-
-  pair <unsigned int,unsigned int> getTBits () {return tBits;}
-  pair <unsigned int,unsigned int> getDBits () {return dBits;}
-  unsigned int getDWidth () {return dBits.first - dBits.second + 1;}
-
-  void setPacketType(PacketType t) { type = t; return; }
-  PacketType getPacketType() { return type; }
-
- 
-  void setIrdyPersistant() { assertIrdyPersistant = true; return; }
-  void setTrdyPersistant() { assertTrdyPersistant = true; return; }
-  void setPersistant() { 
-    assertIrdyPersistant = true; 
-    assertTrdyPersistant = true;
-    return; 
-  }
-  void unsetPersistant() {
-    assertIrdyPersistant = false;
-    assertTrdyPersistant = false;
-    return;
-  }
-
-
-  void buildChannelLogic ( ) {
-    
-    ASSERT(this->target!=0);    
-    ASSERT(this->initiator!=0);    
-
-    Signal *xfer = (new Signal(name+"xfer"))
-      -> setExpr( (new And_Expr(irdy,trdy))  );
-
-    Signal *blocked = (new Signal(name+"blocked"))
-      -> setExpr( new And_Expr( irdy, new Not_Expr(trdy) )  );
-         
-    if (assertIrdyPersistant & logic::c->voptions->isEnabledPersistance) 
-      { 
-	
-	Signal *preBlocked = (new Seq_Signal(name+"preBlocked" ))
-	  ->setResetExpr( new Bvconst_Expr(0,1) )
-	  ->setNxtExpr(blocked);
-	
-	Signal *irdyPersistant = (new Signal(name+"fwdPersistant"))
-	  -> setExpr( 
-		     new Or_Expr( irdy, new Not_Expr(preBlocked) ) 
-		      );
-	
-	irdyPersistant -> assertSignalTrue();
-      }
-
-    if (assertTrdyPersistant & logic::c->voptions->isEnabledPersistance) 
-      { 
-
-	Signal *waiting = (new Signal(name+"waiting"))
-	  -> setExpr( new And_Expr(trdy, new Not_Expr(irdy) ));
-
-	Signal *preWaiting = (new Seq_Signal(name+"preWaiting"))
-	  -> setResetExpr( new Bvconst_Expr(0,1) )
-	  -> setNxtExpr (waiting);      
-      
-	Signal *trdyPersistant  = (new Signal(name+"bwdPersistant"))
-	  -> setExpr( new Or_Expr( trdy, new Not_Expr(preWaiting) ) );
-	
-	trdyPersistant   -> assertSignalTrue();
-      }
-
-    Expr *bvtrue = new Bvconst_Expr(1,1);
-
-    if ( qos->hasTargetResponseBound() & logic::c->voptions->isEnabledResponseBoundChannel) 
-      {
-	aImpliesBoundedFutureB(irdy, trdy, qos->getTargetResponseBound(), name+"TRB");
-      }
-
-    if ( qos->hasTargetBound() & logic::c->voptions->isEnabledBoundChannel ) 
-      {
-	aImpliesBoundedFutureB(bvtrue, trdy, qos->getTargetBound(), name+"TB");
-      }
-
-    if ( qos->hasInitiatorResponseBound() & logic::c->voptions->isEnabledResponseBoundChannel) 
-      {
-	aImpliesBoundedFutureB(trdy, irdy, qos->getInitiatorResponseBound(), name+"IRB");
-      }
-
-    if ( qos->hasInitiatorBound() & logic::c->voptions->isEnabledBoundChannel ) 
-      {
-	aImpliesBoundedFutureB(bvtrue, irdy, qos->getInitiatorBound(), name+"IB");
-      }
-
-    return;
-  }
+Init_Port::Init_Port(string n, Channel *c, Primitive *p) : Port(n, c, p) {
+  ASSERT2(c->initiator == 0, "channel "+(c)->name+ " cannot have a second initiator");
+  p->init_ports.push_back(this);
+  c->initiator = this;
 };
 
-
-
-
-string Channel_Qos::printHeader() {
-  std::stringstream out;
-  out << "channel: " << setw(16) << ch->name; 
-  return out.str();
-};
-
-
-Channel_Qos::Channel_Qos(Channel *c) {
-  ch = c;
-  timeToSinkBound        = T_PROP_NULL;
-  ageBound               = T_PROP_NULL;
-  targetResponseBound    = T_PROP_NULL;
-  initiatorResponseBound = T_PROP_NULL;
-  targetBound            = T_PROP_NULL;
-  initiatorBound         = T_PROP_NULL;
-};
-
-
-void Channel_Qos::printChannelQos (ostream &f) {
-  //  f << "channel: "                 << setw(24) << left << ch->name;
-  f << printHeader(); 
-  f 
-    << setw(27) << right << "  timeToSinkBound: "         << setw(3) << right << timeToSinkBound 
-    << right << "  ageBound: "                << setw(3) << right << ageBound 
-    << "\n" 
-    << setw(36) << right << "  targetBound (response): "             << setw(3) << right << targetBound 
-    << " ("     << setw(3) << right << targetResponseBound << ")" 
-    << "\n"
-    << setw(36) << right << " initiatorBound (repsonse): "          << setw(3) << right << initiatorBound 
-    << " ("  << setw(3) << right << initiatorResponseBound << ")"
-    << "\n";
-}
-
-bool Channel_Qos::hasTargetResponseBound ()     { return targetResponseBound    != T_PROP_NULL;  }
-bool Channel_Qos::hasTargetBound ()             { return targetBound            != T_PROP_NULL;  }
-bool Channel_Qos::hasInitiatorResponseBound ()  { return initiatorResponseBound != T_PROP_NULL;  }
-bool Channel_Qos::hasInitiatorBound ()          { return initiatorBound         != T_PROP_NULL;  }
-bool Channel_Qos::hasTimeToSinkBound ()         { return timeToSinkBound        != T_PROP_NULL;  }
-bool Channel_Qos::hasAgeBound ()                { return ageBound               != T_PROP_NULL;  }
-
-unsigned int Channel_Qos::getTargetResponseBound ()     { return targetResponseBound   ;  }
-unsigned int Channel_Qos::getTargetBound ()             { return targetBound           ;  }
-unsigned int Channel_Qos::getInitiatorResponseBound ()  { return initiatorResponseBound;  }
-unsigned int Channel_Qos::getInitiatorBound ()          { return initiatorBound        ;  }
-unsigned int Channel_Qos::getTimeToSinkBound ()         { return timeToSinkBound       ;  }
-unsigned int Channel_Qos::getAgeBound ()                { return ageBound              ;  }
-
-// if modifiedChannels bound is lower than current bound, add self to modified set
-void Channel_Qos::updateTargetResponseBound( unsigned int b) {
-  if (b < targetResponseBound) 
-    {
-      targetResponseBound = b;
-      g::outQos << printHeader() << " updated targetResponseBound to: " << targetResponseBound << "\n";
-      network::n->modifiedChannels.insert(ch);
-    } 
-  return;
-};
-
-void Channel_Qos::updateInitiatorResponseBound( unsigned int b) {
-  if (b < initiatorResponseBound) 
-    {
-      initiatorResponseBound = b;
-      g::outQos << printHeader() << " updated initiatorResponseBound to: " << initiatorResponseBound << "\n";
-      network::n->modifiedChannels.insert(ch);
-    } 
-  return;
-};
-
-void Channel_Qos::updateTargetBound( unsigned int b) {
-  if (b < targetBound) 
-    {
-      targetBound = b;
-      g::outQos << printHeader() << " updated targetBound to: " << targetBound << "\n";
-      network::n->modifiedChannels.insert(ch);
-    } 
-  return;
-};
-
-void Channel_Qos::updateInitiatorBound( unsigned int b) {
-  if (b < initiatorBound) 
-    {
-      initiatorBound = b;
-      g::outQos << printHeader() << " updated initiatorBound to: " << initiatorBound << "\n";
-      network::n->modifiedChannels.insert(ch);
-    } 
-  return;
-};
-
-void Channel_Qos::updateTimeToSinkBound( unsigned int t) {
-  if (t < timeToSinkBound) 
-    {
-      timeToSinkBound = t;
-      g::outQos << printHeader() << " updated timeToSinkBound to: " << timeToSinkBound << "\n";
-      network::n->modifiedChannels.insert(ch);
-    } 
-  return;
-};
-
-void Channel_Qos::updateAgeBound( unsigned int t) {
-  if (t < ageBound) 
-    {
-      ageBound = t;
-      g::outQos << printHeader() << " updated ageBound to: " << ageBound << "\n";
-      network::n->modifiedChannels.insert(ch);
-    } 
-  return;
-};
-
-
-
-
-
-
-
-
-/*! \brief a port connects a channel to a port of a primitive*/
-class Port  {
-public:
-  Primitive *owner; // primitive that contains the port
-  Channel *channel; // channel that is driven by port
-  string pname;
-  // /* \param n an arbitrary local name for this port within prim (e.g. "a")
-  //   \param c the channel connecting to the port (from outside the owner primitive)
-  //   \param p the primitive that port is being instantiated within
-  // */
-  Port(string n, Channel *c, Primitive *p) {
-    pname = n;
-    owner = p;
-    channel = c;
-  };
-};
-
-/*! \brief port acting as a target to a channel */
-class Init_Port : public Port {
-public:
-  Init_Port(string n, Channel *c, Primitive *p) : Port(n, c, p) {
-    ASSERT2(c->initiator == 0, "channel "+(c)->name+ " cannot have a second initiator");
-    p->init_ports.push_back(this);
-    c->initiator = this;
-  };
-};
-
-
-// /*! \brief port acting as initiator of a channel */
-class Targ_Port : public Port {
-public:
-  Targ_Port(string n, Channel *c, Primitive *p) : Port(n, c, p) {
-    ASSERT2(c->target == 0, "channel "+(c)->name+ " cannot have a second target. Prev target=");
-    p->targ_ports.push_back(this);
-    c->target = this;
-  };
-};
-
-
-
-
-
-
-
-
-    
-void Primitive::printConnectivity(ostream &f) {
-
-  f << "// " << this->name << "\n"; 
-  for (vector <Targ_Port*>::iterator port = (this)->targ_ports.begin();port != (this)->targ_ports.end(); port++ )
-    f << "//\t" << (*port)->pname << " ---> " << (*port)->channel->name << "\n";
-  
-  for (vector <Init_Port*>::iterator port = (this)->init_ports.begin();port != (this)->init_ports.end(); port++ )
-    f << "//\t" << (*port)->pname << " <--- " << (*port)->channel->name << "\n";
-  
-  return;
+Targ_Port::Targ_Port(string n, Channel *c, Primitive *p) : Port(n, c, p) {
+  ASSERT2(c->target == 0, "channel "+(c)->name+ " cannot have a second target. Prev target=");
+  p->targ_ports.push_back(this);
+  c->target = this;
 };
 
 
@@ -429,105 +79,6 @@ void Primitive::printConnectivity(ostream &f) {
 
 
 
-
-
-
-class Source : public Primitive {
-public:
-  Init_Port *o;
-  OracleType source_type;
-
-  Source(Channel *out, string n, Hier_Object *p) : Primitive(n,p) {
-    o = new Init_Port("o",out,this);
-    source_type = ORACLE_NONDETERMINISTIC;
-    (*network::n).primitives.push_back(this);
-    (*network::n).sources.push_back(this);
-  }
-
-  void setTypeEager() { source_type = ORACLE_EAGER;}
-  void setTypeDead() { source_type = ORACLE_DEAD;}
-  void setTypeNondeterministic() { source_type = ORACLE_NONDETERMINISTIC;}
-
-
-  void buildPrimitiveLogic ( ) {
-    
-    Signal *oracleIrdy;
-    if (source_type == ORACLE_EAGER)
-      {
-	oracleIrdy = (new Signal(name+"oracleIrdy")) 
-	  -> setExpr( new Bvconst_Expr(1,1));
-      } 
-    else if (source_type == ORACLE_DEAD) 
-      { 
-	oracleIrdy = (new Signal(name+"oracleIrdy"))
-	  -> setExpr( new Bvconst_Expr(0,1));
-      } 
-    else if (source_type == ORACLE_NONDETERMINISTIC)
-      {
-	unsigned int lsb = logic::c->oracleBus->getWidth();
-	unsigned int msb = lsb;
-	logic::c->oracleBus->widen(1);
-	oracleIrdy = (new Signal(name+"oracleIrdy"))
-	  -> setExpr( new Extract_Expr(logic::c->oracleBus, msb, lsb) );
-      }
-    else  { ASSERT(0); }
-
-    //determine the bitwidths to use
-    unsigned int wData = o->channel->data->getWidth();
-    unsigned int wOracle = o->channel->getDWidth();
-    //cout << "wData: " << wData << " wOracle: " << wOracle << "\n";
-    ASSERT(wOracle + logic::c->wClk == wData);
-
-    unsigned int lsb = logic::c->oracleBus->getWidth();
-    unsigned msb = lsb + wOracle - 1;
-    logic::c->oracleBus->widen( wOracle );
-    Signal *oracle_data = (new Signal(name+"oracle_data"))
-      -> setExpr( new Extract_Expr(logic::c->oracleBus, msb, lsb) );
-    
-    Signal *blocked = (new Signal(name+"blocked"))
-      -> setExpr( new And_Expr( o->channel->irdy, new Not_Expr(o->channel->trdy) )  );
-
-    Signal *preBlocked = (new Seq_Signal(name+"preBlocked"))
-      -> setResetExpr( new Bvconst_Expr(0,1)  )
-      -> setNxtExpr( blocked );
-
-    Expr *oracleCatClk = new Cat_Expr(logic::c->tCurrent , oracle_data);
-    Signal *pre_data = (new Seq_Signal(name+"pre_data"))
-      -> setResetExpr( new Bvconst_Expr(0, wData) )
-      -> setNxtExpr (oracleCatClk );
-    
-    o->channel->irdy
-      -> setExpr( new Or_Expr( oracleIrdy, preBlocked) );
-
-    o->channel->data
-      -> setExpr ( (new Case_Expr())
-		   -> setDefault( oracleCatClk )
-		   -> addCase (preBlocked, pre_data)
-		   );
-    
-    return;
-  }
-
-  void propagateLatencyLemmas( ) {
-
-    //    cout << "propagating through source " << name << "\n";
-    if (source_type == ORACLE_EAGER)
-      {
-	o->channel->qos->updateInitiatorBound(0);
-      }
-
-    if (o->channel->qos->hasTargetResponseBound())
-      {
-	o->channel->qos->updateAgeBound(o->channel->qos->getTargetResponseBound() );
-      }
-    if (o->channel->qos->hasTargetBound())
-      {
-	o->channel->qos->updateAgeBound(o->channel->qos->getTargetBound());
-      }    
-
-    return;
-  }  
-};
 
 // a counter that asserts an outputs if t cycles elapse between a and b.
 // used for enforcing bounds on sources and sinks, and for checking
@@ -561,571 +112,19 @@ Signal * intervalMonitor( Expr * a, Expr * b, unsigned int t, string name) {
 	       (new Bvadd_Expr( cnt , new Bvconst_Expr(1,w) ))->setWidth(w) 
 		);
 
-  //  Expr *intervalValid = new Lte_Expr( cnt 
-  Expr *intervalValid = new Lt_Expr( nxtCnt 
-				      , new Bvconst_Expr(t,w) 
-				      );
-  // 				      , cnt 
-// 					    ) 
-// 			       )
 	
   Signal *intervalViolated = (new Signal(name+"intervalViolated"))
-    //        -> setExpr ( new Not_Expr (intervalValid) );
-  -> setExpr ( new Lt_Expr( new Bvconst_Expr(t,w) , cnt ) );
+    -> setExpr ( new Lt_Expr( new Bvconst_Expr(t,w) , cnt ) );
   
   return intervalViolated;
 }
 
 
 
-class Sink : public Primitive {
-public:
-  Targ_Port *i;
-  OracleType sink_type;
-  unsigned int bound;
-
-  Sink(Channel *in, string n, Hier_Object *p) : Primitive(n,p) {
-    i = new Targ_Port("i",in,this);
-    sink_type = ORACLE_NONDETERMINISTIC;
-    (*network::n).primitives.push_back(this);
-    (*network::n).sinks.push_back(this);
-  }
-
-  void setTypeEager()      { sink_type = ORACLE_EAGER; }
-  void setTypeDead()       { sink_type = ORACLE_DEAD;  } 
-  void setTypeNondeterministic()         { sink_type = ORACLE_NONDETERMINISTIC;    }
-  void setTypeBoundedResponse(unsigned int n)   { sink_type = ORACLE_BOUNDED_RESPONSE; bound = n; }
-  void setTypeBounded(unsigned int n)   { sink_type = ORACLE_BOUNDED; bound = n; }
-
-  void propagateLatencyLemmas( ) {
-    if (sink_type == ORACLE_BOUNDED_RESPONSE) { 
-      i->channel->qos->updateTargetResponseBound(bound);
-      //      i->channel->updateInitiatorResponseBound(responseBound, modifiedChannels);
-      //i->channel->qos->updateTargetResponseBound(responseBound, modifiedChannels);
-      i->channel->qos->updateTimeToSinkBound(bound);
-    }
-
-    if (sink_type == ORACLE_BOUNDED) { 
-      i->channel->qos->updateTargetBound(bound);
-      //      i->channel->updateInitiatorResponseBound(responseBound, modifiedChannels);
-      //i->channel->qos->updateTargetResponseBound(responseBound, modifiedChannels);
-      i->channel->qos->updateTimeToSinkBound(bound);
-    }
-
-    if (sink_type == ORACLE_EAGER) { 
-      i->channel->qos->updateTargetBound(1);
-      //      i->channel->updateInitiatorResponseBound(responseBound, modifiedChannels);
-      //i->channel->qos->updateTargetResponseBound(responseBound, modifiedChannels);
-      i->channel->qos->updateTimeToSinkBound(1);
-    }
 
 
-    return;
-  }
-
-
-
-  void buildPrimitiveLogic () {
-
-    Signal *oracle_trdy;
-    if (    (sink_type == ORACLE_BOUNDED_RESPONSE) 
-	    or (sink_type == ORACLE_NONDETERMINISTIC) 
-	    or (sink_type == ORACLE_BOUNDED) ) 
-      {
-	unsigned int lsb = logic::c->oracleBus->getWidth();
-	unsigned int msb = lsb;
-	logic::c->oracleBus->widen(1);
-	oracle_trdy = (new Signal(name+"oracle_trdy"))
-	  -> setExpr( new Extract_Expr(logic::c->oracleBus, msb, lsb) );
-      }
-
-    
-    Signal *waiting = (new Signal(name+"waiting")) 
-      -> setExpr( new And_Expr( i->channel->trdy , new Not_Expr(i->channel->irdy) ));
-
-    Signal *pre = (new Seq_Signal(name+"preWaiting" ))
-      -> setResetExpr( new Bvconst_Expr(0,1) )
-      -> setNxtExpr ( waiting );       
-
-    // the counter to enforce bounded non-det
-    if (sink_type == ORACLE_BOUNDED_RESPONSE) 
-      {
-	Signal *blocked = (new Signal(name+"blocked"))
-	  -> setExpr( new And_Expr( i->channel->irdy, new Not_Expr(     i->channel->trdy  ) )  );
-	
-	Signal *force_trdy = intervalMonitor(blocked, i->channel->trdy, bound-1, name);
-	i->channel->trdy -> setExpr( new Or_Expr( oracle_trdy , force_trdy , pre ));
-      } 
-
-
-    else if (sink_type == ORACLE_BOUNDED) 
-      {
-	Signal *force_trdy = intervalMonitor( new Not_Expr(i->channel->trdy) , i->channel->trdy, bound-1, name);
-	i->channel->trdy -> setExpr( new Or_Expr( oracle_trdy , force_trdy , pre ));
-      } 
-
-    else if (sink_type == ORACLE_BOUNDED) 
-      {
-	i->channel->trdy -> setExpr( new Or_Expr( oracle_trdy , pre ));
-      } 
-    else if (sink_type == ORACLE_EAGER) 
-      {
-	i->channel->trdy -> setExpr( new Bvconst_Expr(1,1) );
-      } 
-    else if (sink_type == ORACLE_DEAD) 
-      {
-	i->channel->trdy -> setExpr( new Bvconst_Expr(0,1) );
-      } 
-    else { ASSERT(0); }
-
-    return;
-  }
-
-
-};
-
-
-
-string Slot_Qos::printHeader() {
-  std::stringstream out;
-  out << "queue: " << setw(16) << parentQueue->name << " slot:" << setw(2) << slotIndexInParentQueue ;
-  return out.str();
-};
-
-Slot_Qos::Slot_Qos(unsigned int i, Queue *q) {
-  enable();
-  slotIndexInParentQueue = i;
-  parentQueue = q;
-  timeToSink = T_PROP_NULL;
-  maxAge = T_PROP_NULL;
-}
-
-void Slot_Qos::printSlotQos(ostream &f) {
-  f    << printHeader() 
-       << "  timeToSinkBound: " << setw(3)  << right << getTimeToSink()
-       << "  ageBound: "        << setw(3)  << right << getMaxAge()
-       << "\n"; 
-}
-
-void Slot_Qos::setTimeToSink(unsigned int t)   { 
-  timeToSink = min(timeToSink,t);
-  g::outQos << printHeader() << "  set timeToSink to " << maxAge << "\n";
-}
-
-
-void Slot_Qos::setMaxAge(unsigned int t)       { 
-  ASSERT(t < T_PROP_NULL);
-  maxAge = min(maxAge,t);
-  g::outQos << printHeader() << "  set maxAge to " << maxAge << " arg was " << t << "\n";
-}
-
- 
-
-
-
-
-
-
-
-    
-Queue::Queue(Channel *in, Channel *out, unsigned int d, const string n, Hier_Object *p) : Primitive(n,p) {
-  i = new Targ_Port("i",in, this);
-  o = new Init_Port("o",out,this);
-
-  ASSERT (d >= 1); 
-  depth = d;
-  numItemsMax = depth;
-
-  for (int i = 0; i<depth; i++) 
-    slotQos.push_back (new Slot_Qos(i,this) );
-  qslots.resize(depth);
-  type = PACKET_DATA;
-  (*network::n).primitives.push_back(this);
-  (*network::n).queues.push_back(this);
-  // try switching to one-hot encoding for numItems?
-}
-
-
-Queue * Queue::setType ( PacketType p) {
-  type = p;
-  return this;
-}
-
-PacketType Queue::getPacketType () { return type;}
-
-//void Queue::buildPrimitiveLogic ( );
-
-void Queue::propagateLatencyLemmas( ) {
-  Channel *ichan = i->channel;
-  Channel *ochan = o->channel;
-  
-  
-  if (ochan->qos->getTargetResponseBound() == 0) 
-    {
-      numItemsMax = 1; //eager queue should never exceed 1 item
-      for (int i = depth-1; i >= 0; i--) 
-	{ 
-	  if (ichan->qos->hasAgeBound())	      
-	    {
-	      slotQos[i]->setMaxAge( 1 + ichan->qos->getAgeBound() );
-	    }
-	  if (ochan->qos->hasTimeToSinkBound())	      
-	    {
-	      slotQos[i]->setTimeToSink( 1 + ochan->qos->getTimeToSinkBound() );
-	    }
-	}
-    } 
-  else 
-    {
-      unsigned int slot_latency = min (ochan->qos->getTargetBound() , ochan->qos->getTargetResponseBound() + 1);
-      for (int i = 0; i<depth; i++) 
-	{
-	  if (ichan->qos->hasAgeBound())
-	    {
-	      slotQos[i] -> setMaxAge( ichan->qos->getAgeBound() + slot_latency * (depth-i) );
-	    }
-	  if (ochan->qos->hasTimeToSinkBound())
-	    {
-	      slotQos[i] -> setTimeToSink( ochan->qos->getTimeToSinkBound()  + slot_latency * i );
-	    }
-	}
-    }
-  
-  if (depth == 1) 
-    {
-      ichan->qos->updateTargetResponseBound( 1 + ochan->qos->getTargetResponseBound() ); //no simultaneous r/w
-      ichan->qos->updateTargetBound( 1 + ochan->qos->getTargetBound() ); //no simultaneous r/w
-    }
-  else 
-    {
-      ichan->qos->updateTargetResponseBound( ochan->qos->getTargetResponseBound() );
-      ichan->qos->updateTargetBound( ochan->qos->getTargetBound() );
-    }
-  
-  
-  ichan->qos->updateTimeToSinkBound(  slotQos[depth-1]->getTimeToSink() ); 
-  ochan->qos->updateAgeBound( slotQos[0]->getMaxAge() ); 
-
-  return;
-}
         
 
-
-
-
-
-void Queue::buildPrimitiveLogic ( ) {
-
-
-  //check the base size (without timestamp), and also the type
-  //  ASSERT( i->channel->getDataWidth() == o->channel->getDataWidth() );
-  ASSERT( i->channel->data->getWidth() == o->channel->data->getWidth() );
-  ASSERT( getPacketType() == i->channel->getPacketType() );
-  ASSERT( getPacketType() == o->channel->getPacketType() );
-  ASSERT( depth == qslots.size() );
-
-  unsigned int physicalDepth = depth+1; 
-
-
-  unsigned int wDepth = numBitsRequired(physicalDepth); 
-  //  unsigned int wPacket = i->channel->getDataWidth();
-  unsigned int wPacket = i->channel->data->getWidth();
-  pair <unsigned int,unsigned int> tBits; //which bits hold timestamp
-  
-
-  if (getPacketType() == PACKET_DATA)
-    {
-      tBits = i->channel->getTBits();
-//       wPacket += logic::c->wClk; 
-//       tBits = make_pair(wPacket-1, i->channel->getDataWidth()); //msb is first
-    } 
-
-  
-
-  for (unsigned int j = 0; j<depth; j++) 
-    qslots[j] = (new Signal(name+"qslots"+itos(j)) );
-    
-  Signal *nxt_numItems = (new Signal(name+"nxt_numItems"));
-
-  numItems = (new Seq_Signal(name+"numItems"))
-    -> setResetExpr( (new Bvconst_Expr(0))->setWidth(wDepth) )
-    -> setNxtExpr( nxt_numItems );
-
-  Signal *numItemsPlus1 = (new Signal(name+"numItemsPlus1"))
-    -> setExpr( new Bvadd_Expr( wDepth, numItems, new Bvconst_Expr(1,wDepth))); 
-
-  Signal *isEmpty = (new Signal(name+"isEmpty"))
-    -> setExpr( new Eq_Expr( new Bvconst_Expr(0,wDepth) , numItems ) );
-
-  Signal *isFull  = (new Signal(name+"isFull"))
-    -> setExpr( new Eq_Expr( new Bvconst_Expr(depth,wDepth) , numItems ) );
-
-  //define the local signals and connect them to channel signals as needed
-  Signal *i_irdy = new Signal(name+"i_irdy");
-  Signal *i_data = new Signal(name+"i_data");
-  Signal *i_trdy = (new Signal(name+"i_trdy"))
-    -> setExpr( new Not_Expr(isFull) );
-
-  i->channel->trdy     -> setExpr( (new Id_Expr(i_trdy ))->setWidth(1) );
-  i_irdy               -> setExpr( (new Id_Expr(i->channel->irdy ))->setWidth(1) );
-  i_data               -> setExpr( (new Id_Expr(i->channel->data))->setWidth(wPacket) );
-
-  Signal *o_data = new Signal(name+"o_data");
-  Signal *o_trdy = new Signal(name+"o_trdy");
-  Signal *o_irdy = (new Signal(name+"o_irdy"))
-    -> setExpr(new Not_Expr(isEmpty));
- 
-  o->channel->data     -> setExpr( (new Id_Expr( o_data )) ->setWidth(wPacket)  );
-  o->channel->irdy     -> setExpr( (new Id_Expr( o_irdy )) ->setWidth(1) );
-  o_trdy               -> setExpr( (new Id_Expr( o->channel->trdy )) -> setWidth(1) );
-
-  Signal *readEnable   = (new Signal(name+"readEnable"))
-    -> setExpr( new And_Expr(o_irdy, o_trdy));
-
-  Signal *writeEnable   = (new Signal(name+"writeEnable"))
-    -> setExpr( new And_Expr(i_irdy, i_trdy));
-
-
-  ////////////////////////////////////////////////////
-  // keep track of the number of items in the queue //
-  ////////////////////////////////////////////////////
-
-  Signal *incrNumItems = (new Signal(name+"incrNumItems"))
-    -> setExpr( new And_Expr( writeEnable, new Not_Expr(readEnable) ) );
-
-  Signal *decrNumItems = (new Signal(name+"decrNumItems"))
-    -> setExpr( new And_Expr( readEnable, new Not_Expr(writeEnable) ) );
-
-  Signal *numItemsMinus1 = (new Signal(name+"numItemsMinus1"))
-    -> setExpr( (new Bvsub_Expr(numItems, new Bvconst_Expr(1,wDepth)))->setWidth(wDepth) );
-
-  nxt_numItems 
-    -> setExpr( (new Case_Expr())
-		-> setDefault(numItems)
-		-> addCase(decrNumItems, numItemsMinus1)
-		-> addCase(incrNumItems, numItemsPlus1) 
-		-> setWidth(wDepth)
-		);
-		 
-
-
-
-
-
-  //////////////////////////////////
-  // manage the tail of the queue //
-  //////////////////////////////////
-  Signal *nxt_tail = (new Signal(name+"nxtTail"));
-
-  Signal *tail = (new Seq_Signal(name+"tail"))
-    -> setResetExpr( (new Bvconst_Expr(0)) -> setWidth(wDepth) )
-    -> setNxtExpr (nxt_tail);
-  
-  Signal *tail_plus_1 = BvIncrExprModM(tail, physicalDepth, name+"tailPlus1ModM");
-  
-  nxt_tail
-    -> setName(name+"nxt_tail")
-    -> setExpr( (new Case_Expr())
-		-> setDefault(tail)
-		-> addCase(writeEnable, tail_plus_1)
-		-> setWidth(wDepth)
-		);
-
-  //////////////////////////////////
-  // manage the head of the queue //
-  //////////////////////////////////
-  Signal *nxt_head     = new Signal(name+"nxtHead"); 
-  Signal *head = (new Seq_Signal(name+"head"))
-    -> setResetExpr( new Bvconst_Expr(0,wDepth) )
-    -> setNxtExpr ( nxt_head );
-
-  Signal *head_plus_1 = BvIncrExprModM(head, physicalDepth, name+"headPlus1ModM");
-
-  nxt_head 
-    -> setName (name+"nxt_head")
-    -> setExpr ( (new Case_Expr())
-		 -> setDefault(head)
-		 -> addCase(readEnable, head_plus_1)
-		 -> setWidth(wDepth)
-		 );
-		  
-
-
-  //////////////////////////////////
-  // manage the queue entries     //
-  //////////////////////////////////
-  Signal *bvc_null_pkt = (new Signal())
-    -> setName("nullPkt")
-    -> setExpr( new Bvconst_Expr(0,wPacket) );
-                                          
-
-  vector <Seq_Signal *> bslots (physicalDepth);
-  for (unsigned int i = 0; i<physicalDepth; i++) 
-    {
-      bslots[i] = new Seq_Signal(name+"bslot"+itos(i));
-      bslots[i] ->setWidth(wPacket);
-
-      Signal *nxt_buffer      = (new Signal())
-	-> setName(name+"bslot"+itos(i)+"nxt");
-
-      Signal *bvi = (new Signal(name+"const"+itos(i))) 
-	-> setExpr( (new Bvconst_Expr(i,wDepth)) );
-
-      Signal *is_tail = (new Signal())
-	-> setName(name+"bslot"+itos(i)+"is_tail")
-	-> setExpr( new Eq_Expr(bvi, tail));
-
-
-      Signal *write_bslot = (new Signal())
-	-> setName( name+"bslot"+itos(i)+"write" )
-	-> setExpr( (new And_Expr())		   
-		    -> addInput (writeEnable)
-		    -> addInput (is_tail)
-		    );
-             
-      Signal *is_head = (new Signal(name+"bslot"+itos(i)+"is_head") )
-	-> setExpr( new Eq_Expr(bvi, head) );
-
-
-      Signal *read_bslot = (new Signal())
-	-> setName(name+"bslot"+itos(i)+"clear")
-	-> setExpr( (new And_Expr())
-		    -> addInput (is_head)
-		    -> addInput (readEnable)
-		    //		    -> addInput (new Not_Expr(write_bslot))
-		    );
-
-      //Signal *foo = (new Signal(name+"readNeqWrite"))
-      // -> setExpr(new Not_Expr(new And_Expr(write_bslot, read_bslot)));
-      //foo->assertSignalTrue();
-
-      nxt_buffer 
-	-> setExpr( (new Case_Expr())
-		    -> setDefault(bslots[i])
-		    -> addCase(read_bslot, bvc_null_pkt)
-		    -> addCase(write_bslot, i_data)
-		    -> setWidth(wPacket)
-		    );
-		   
-      bslots[i] -> setResetExpr(bvc_null_pkt);
-      bslots[i] -> setNxtExpr(nxt_buffer);
-
-    }
-
-  // map the circular buffer slots to their fifo indexed slots.
-  for (unsigned int q = 0; q<depth; q++) 
-    {
-      Case_Expr *e = new Case_Expr();
-      e -> setWidth(wDepth);
-      e -> setDefault(bvc_null_pkt);
-      
-      //      for (unsigned int b = 0; b<depth; b++) 
-      for (unsigned int b = 0; b<physicalDepth; b++) 
-	{
-	  // b_eq_q means: should the bth slot in circular buffer map to the qth slot in fifo queue
-	  //unsigned int hpos = (depth+b-q)%physicalDepth; //slot q maps to slot b when head=hpos            
-	  unsigned int hpos = (physicalDepth+b-q)%physicalDepth; //slot q maps to slot b when head=hpos            
-	  Expr * q_eq_b = new Eq_Expr(head, new Bvconst_Expr(hpos,wDepth));
-	  e -> addCase(q_eq_b, bslots[b]);
-	}
-      qslots[q]	-> setExpr( e );
-      
-    }
-  
-  ASSERT(qslots[0]->getWidth() == wPacket);
-  //  o_data    ->setExpr( (new Id_Expr( qslots[0]))->setWidth(wPacket) );
-  o_data    ->setExpr( (new Id_Expr( qslots[0]))->setWidth(wPacket) );
-
-  if (logic::c->voptions->isEnabledPsi) 
-    {
-      
-      Signal *headTailDistance = (new Signal())
-	-> setName( name+"headTailDistance" )
-	-> setExpr( BvsubExprModM( tail, head, physicalDepth-1, name+"headTailDistance") );
-      
-      Signal *headTailDistanceValid = (new Signal(name+"headTailDistanceValid"))
-	-> setExpr( new Eq_Expr(headTailDistance, numItems));
-
-      headTailDistanceValid -> assertSignalTrue();
-    }
-
-
-  if (type == PACKET_DATA)
-    {  
-      // create all the ages to be checked below
-      vector <Signal*> age (depth);
-      for (unsigned int i = 0; i<depth; i++) 
-	{
-
-	  Signal *hasData  = (new Signal())
-	    -> setName(name+"qslot"+itos(i)+"_hasdata")
-	    -> setExpr( new Lt_Expr( new Bvconst_Expr(i,wDepth),  numItems ));
-
-	  Signal *qSlotTimestamp = (new Signal())
-	    -> setName(name+"qSlot"+itos(i)+"Timestamp")
-	    -> setExpr( new Extract_Expr(qslots[i], tBits.first, tBits.second));
-	  
-	  double maxval = pow(double(2),double(logic::c->wClk))-1;
-
-	  Signal *agex  = (new Signal(name+"ageIfValid"))
-	    -> setExpr( 
-		       BvsubExprModM( 
-				     logic::c->tCurrent, 
-				     qSlotTimestamp , 
-				     maxval , 
-				     name+"qSlot"+itos(i)+"currentMinusTimestamp" 
-				      ) 
-			);
-
-	  age[i] = (new Signal())
-	    -> setName(name+"qslot"+itos(i)+"_age")
-	    -> setExpr( (new Case_Expr())
-			-> setDefault( new Bvconst_Expr(0,logic::c->wClk) )
-			-> addCase( hasData, agex)
-			-> setWidth(logic::c->wClk)
-			);
-
-	}
-
-      if (logic::c->voptions->isEnabledPhiLQueue) 
-	{
-	  for (unsigned int i = 0; i<depth; i++) 
-	    if ( slotQos[i]->isEnabled() )
-	    {
-	  
-	      Signal *age_bound = (new Signal())
-		-> setName( name+"qslot"+itos(i)+"phiLAgeBound")
-		-> setExpr( (new Bvconst_Expr(slotQos[i]->getMaxAge() + 1)) -> setWidth(logic::c->wClk) );
-	  
-	      Signal *age_valid = (new Signal())
-		-> setName( name+"qslot"+itos(i)+"phiLValid" )
-		-> setExpr( new Lt_Expr( age[i] , age_bound) );
-	  
-	      age_valid -> assertSignalTrue();
-	    }
-	}
-
-      if (logic::c->voptions->isEnabledPhiGQueue) 
-	{
-	  for (unsigned int i = 0; i<depth; i++) 
-	    if ( slotQos[i]->isEnabled() )
-	    {
-
-	      Signal *age_bound = (new Signal())
-		-> setName(name+"qslot"+itos(i)+"phiGAgebound")
-		-> setExpr( (new Bvconst_Expr( logic::c->voptions->getTMax())) -> setWidth(logic::c->wClk) );
-
-	      Signal *age_valid = (new Signal())
-		-> setName( name+"qslot"+itos(i)+"phiGValid" )
-		-> setExpr( new Lt_Expr( age[i] , age_bound) );
-
-	      age_valid -> assertSignalTrue();
-	    }
-	}
-    }  
-  
-  return;
-}
 
 
 
@@ -1142,26 +141,24 @@ void Ckt::buildNetworkLogic(Network *n) {
       maxLatency = max(maxLatency, (*it)->slotQos[i]->getMaxAge() ); 
 
 
-  if (logic::c->voptions->isEnabledPhiLQueue and not logic::c->voptions->isEnabledPhiGQueue)
+  if (g_ckt->voptions->isEnabledPhiLQueue and not g_ckt->voptions->isEnabledPhiGQueue)
     {
       cout << "no global tMax was entered, using " << maxLatency << "\n";
       voptions->setTMax(maxLatency); 
     }
 
   // using phiG but have not manually assigned it
-  if (logic::c->voptions->isEnabledPhiGQueue and not logic::c->voptions->hasTMax())
-    logic::c->voptions->setTMax(maxLatency);
+  if (g_ckt->voptions->isEnabledPhiGQueue and not g_ckt->voptions->hasTMax())
+    g_ckt->voptions->setTMax(maxLatency);
 
-  if (logic::c->voptions->isEnabledPhiLQueue and logic::c->voptions->isEnabledPhiGQueue)
+  if (g_ckt->voptions->isEnabledPhiLQueue and g_ckt->voptions->isEnabledPhiGQueue)
     ASSERT2(maxLatency <= voptions->getTMax(),"tmax was set smaller than largest lemma time"); 
-
 
 
   if (voptions->hasTMax()) 
     maxLatency = max(maxLatency, voptions->getTMax() );
 
   wClk = numBitsRequired( maxLatency );
-  //  wClk = numBitsRequired( max(maxLatency, voptions->getTMax() ) );
       
   cout << "\nglobal latency bound (tMax) is          " << voptions->getTMax() << "\n";
   cout << "largest time from latency lemmas is     " << maxLatency << "\n";
@@ -1266,7 +263,7 @@ Signal * BvIncrExprModM (Expr *a, unsigned int m, string name) {
   Signal *withinRange = (new Signal(name+"withinRange"))
     -> setExpr( new Lt_Expr (a, new Bvconst_Expr(m,w)));
   
-  if (logic::c->voptions->isEnabledPsi)
+  if (g_ckt->voptions->isEnabledPsi)
     withinRange->assertSignalTrue();
 		
 
@@ -1309,8 +306,7 @@ void Network::printQos( ostream &f)
 
 void Network::addLatencyLemmas() 
 {
-
-  g::outQos.open("dump.qos");
+  g_outQos.open("dump.qos");
 
   // initially only the sources/sinks need to be updated with own qos guarantees
   for (vector <Sink*>::iterator it = sinks.begin(); it != sinks.end(); it++ ) 
@@ -1322,21 +318,21 @@ void Network::addLatencyLemmas()
   // modifiedChannels keeps track of what signals channels need to propagate
   
   unsigned int cnt = 0;
-  while (network::n->modifiedChannels.size() > 0) 
+  while (g_network->modifiedChannels.size() > 0) 
     {
 
-      g::outQos << "\n on iter " << cnt
-		<< " modifiedChannels.size = " << network::n->modifiedChannels.size(); 
-      for (set<Channel*>::iterator it = network::n->modifiedChannels.begin(); 
-	   it != network::n->modifiedChannels.end(); it++) 
+      g_outQos << "\n on iter " << cnt
+	       << " modifiedChannels.size = " << g_network->modifiedChannels.size(); 
+      for (set<Channel*>::iterator it = g_network->modifiedChannels.begin(); 
+	   it != g_network->modifiedChannels.end(); it++) 
 	{
-	  g::outQos << "\n\t" << (*it)->name ;
+	  g_outQos << "\n\t" << (*it)->name ;
 	}
-      g::outQos << "\n";
+      g_outQos << "\n";
 
 
-      set<Channel*>::const_iterator c  = network::n->modifiedChannels.begin();
-      network::n->modifiedChannels.erase(*c);
+      set<Channel*>::const_iterator c  = g_network->modifiedChannels.begin();
+      g_network->modifiedChannels.erase(*c);
         
       Primitive *iprim = (*c)->initiator->owner;
       Primitive *tprim = (*c)->target->owner;
@@ -1347,12 +343,11 @@ void Network::addLatencyLemmas()
     }
 
   printQos(cout);
-  printQos(g::outQos);
+  printQos(g_outQos);
   
 
-  //  cout << "\ninferred numeric invariant properties \n";
   cout << "\n";
-  g::outQos.close();
+  g_outQos.close();
   return;
 }
 
@@ -1441,148 +436,6 @@ public:
 
 
 
-class Merge : public Primitive {
-public:
-  Targ_Port *a;
-  Targ_Port *b;
-  Init_Port *o;
-
-  Signal *u;
-    
-  Merge(Channel *in1, Channel *in2, Channel *out, const string n, Hier_Object *p) : Primitive(n,p) {
-    a = new Targ_Port("a",in1, this);
-    b = new Targ_Port("b",in2, this);
-    o = new Init_Port("o",out, this);
-
-    (*network::n).primitives.push_back(this);
-
-    // try switching to one-hot encoding for numItems?
-    //u = new Signal(name+"u", 1,  this);
-  }
-
-  void propagateLatencyLemmas( ) {
-    
-    if (o->channel->qos->hasTargetResponseBound() )
-      {
-	int n = 1 + 2 * o->channel->qos->getTargetResponseBound();
-	a->channel->qos->updateTargetResponseBound( n );
-	b->channel->qos->updateTargetResponseBound( n );
-
-	if (o->channel->qos->hasTimeToSinkBound())
-	  {
-	    int m = o->channel->qos->getTimeToSinkBound() + n;
-	    a->channel->qos->updateTimeToSinkBound( m );
-	    b->channel->qos->updateTimeToSinkBound( m );
-	  }
-      }
-
-    if (o->channel->qos->hasTargetBound() )
-      {
-	int n = 1 + 2 * o->channel->qos->getTargetBound();
-	a->channel->qos->updateTargetBound( n );
-	b->channel->qos->updateTargetBound( n );
-
-	if (o->channel->qos->hasTimeToSinkBound())
-	  {
-	    int m = n + o->channel->qos->getTimeToSinkBound();
-	    a->channel->qos->updateTimeToSinkBound( m );
-	    b->channel->qos->updateTimeToSinkBound( m );
-	  }
-      }
-
-    if (a->channel->qos->hasAgeBound() and b->channel->qos->hasAgeBound() )
-      {
-	int n = max ( a->channel->qos->getAgeBound() , b->channel->qos->getAgeBound() );
-	o->channel->qos->updateAgeBound(n);
-      }
-
-    return;
-  }
-
-  void buildPrimitiveLogic ( ) {
-
-    unsigned int w = o->channel->data->getWidth();
-    ASSERT (w == a->channel->data->getWidth());
-    ASSERT (w == b->channel->data->getWidth());
-  
-    Signal *a_irdy = (new Signal(name+"a_irdy" ))->setWidth(1);
-    Signal *a_data = (new Signal(name+"a_data" ))->setWidth(w);
-    Signal *a_trdy = (new Signal(name+"a_trdy" ))->setWidth(1);
-
-    a_irdy             -> setExpr( new Id_Expr(1     , a->channel->irdy) );
-    a_data             -> setExpr( new Id_Expr(w , a->channel->data) );
-    a->channel->trdy   -> setExpr( new Id_Expr(1     , a_trdy));
-
-
-    Signal *b_irdy = (new Signal(name+"b_irdy" ))->setWidth(1);
-    Signal *b_data = (new Signal(name+"b_data" ))->setWidth(w);
-    Signal *b_trdy = (new Signal(name+"b_trdy" ))->setWidth(1);
-    
-    b_irdy            -> setExpr( new Id_Expr(1     , b->channel->irdy ) );
-    b_data            -> setExpr( new Id_Expr(w , b->channel->data ) );
-    b->channel->trdy  -> setExpr( new Id_Expr(1     , b_trdy) );
-    
-    Signal *o_irdy = (new Signal(name+"o_irdy" ))->setWidth(1);
-    Signal *o_data = (new Signal(name+"o_data" ))->setWidth(w);
-    Signal *o_trdy = (new Signal(name+"o_trdy" ))->setWidth(1);
-
-    o->channel->data   -> setExpr( new Id_Expr(w , o_data) );
-    o->channel->irdy   -> setExpr( new Id_Expr(1     , o_irdy) );
-    o_trdy             -> setExpr( new Id_Expr(1     , o->channel->trdy ) );
-    o_irdy             -> setExpr( new Or_Expr( a_irdy , b_irdy) );
-
-        
-    Signal *u_nxt = new Signal(name+"u_nxt");
-        
-    u = (new Seq_Signal(name+"u"))
-      -> setResetExpr( new Bvconst_Expr(0,1) )
-      -> setNxtExpr( u_nxt );
-    
- 
-    // at = ai & ot & ( u | ~bi)
-    // bt = bi & ot & (~u | ~ai)
-
-    Signal *u_or_nbi = (new Signal())
-      -> setName (name+"u_or_nbi")
-      -> setExpr( new Or_Expr(u, new Not_Expr(b_irdy)) );
-
-    Signal *nu_or_nai = (new Signal())
-      -> setName (name+"nu_or_nai")
-      -> setExpr( new Or_Expr( new Not_Expr(u), new Not_Expr(a_irdy) ) );
-    
-    a_trdy   -> setExpr( (new And_Expr())
-			 -> addInput (u_or_nbi)
-			 -> addInput (o_trdy)
-			 -> addInput (a_irdy)
-			 );
-    
-    b_trdy   -> setExpr( (new And_Expr())
-			 -> addInput (nu_or_nai)
-			 -> addInput (o_trdy)
-			 -> addInput (b_irdy)
-			 );
-		   
-
-    o_data   -> setExpr ( (new Case_Expr(w))
-			  -> setDefault( new Bvconst_Expr(0,w) )
-			  -> addCase( b_trdy , b_data)
-			  -> addCase( a_trdy , a_data)
-			  );
-			  
-    u_nxt    -> setExpr( (new Case_Expr(1))
-			 -> setDefault( u )
-			 -> addCase( b_trdy , new Bvconst_Expr(1,1) )
-			 -> addCase( a_trdy , new Bvconst_Expr(0,1) )
-			 );
-
-
-    return;
-  }
-        
-};
-
-
-
 
 void Network::printNetwork () {
 
@@ -1622,329 +475,6 @@ void Network::printNetwork () {
 
 
 
-class Join : public Primitive {
-public:
-
-  Targ_Port *a;
-  Targ_Port *b;
-  Init_Port *o;
-
-  Join(Channel *in1, Channel *in2, Channel *out, string n, Hier_Object *p) : Primitive(n,p) {
-    a = new Targ_Port("a",in1,this);
-    b = new Targ_Port("b",in2,this);
-    o = new Init_Port("o",out,this);
-    (*network::n).primitives.push_back(this);
-  }
-
-
-  void propagateLatencyLemmas( ) {
-
-    cout << "propagating through join " << name << "\n";
-
-    if (a->channel->qos->hasInitiatorBound() and b->channel->qos->hasInitiatorBound() )
-      {
-	int n = max (a->channel->qos->getInitiatorBound() , b->channel->qos->getInitiatorBound() );
-	o->channel->qos->updateInitiatorBound( n );
-      }
-
-    Port *aa;
-    Port *bb;
-
-    for (int i = 0; i <=1; i++) 
-      {
-	if (i==0) { aa=a; bb=b;} else {aa=b; bb=a;}
-	// all the bounds to set on aa:
-	if (bb->channel->qos->hasInitiatorBound() and o->channel->qos->hasTargetBound() )
-	  {
-	    int n = max (bb->channel->qos->getInitiatorBound() , o->channel->qos->getTargetBound() );
-	    aa->channel->qos->updateTargetBound( n );
-	  }
-	
-	if (bb->channel->qos->hasInitiatorBound() and o->channel->qos->hasTargetResponseBound() )
-	  {
-	    int n = max (bb->channel->qos->getInitiatorBound() , o->channel->qos->getTargetResponseBound());
-	    aa->channel->qos->updateTargetResponseBound( n );
-	  }
-	
-	if (o->channel->qos->hasTimeToSinkBound() and aa->channel->qos->hasInitiatorResponseBound() )
-	  {
-	    int n = o->channel->qos->getTimeToSinkBound() + aa->channel->qos->getInitiatorResponseBound();
-	    aa->channel->qos->updateTimeToSinkBound(n );
-	  }
-
-	if (o->channel->qos->hasTimeToSinkBound() and aa->channel->qos->hasInitiatorBound() )
-	  {
-	    int n = o->channel->qos->getTimeToSinkBound() + aa->channel->qos->getInitiatorBound();
-	    aa->channel->qos->updateTimeToSinkBound(n );
-	  }	
-      }
-
-    return;
-  }
-
-
-
-
-  void buildPrimitiveLogic ( ) {
-
-    unsigned int w = o->channel->data->getWidth();
-    ASSERT (w == a->channel->data->getWidth() );
-    ASSERT (w == b->channel->data->getWidth() );
-
-//     unsigned int w = o->channel->getDataWidth();
-//     ASSERT (w == a->channel->getDataWidth() );
-//     ASSERT (w == b->channel->getDataWidth() );
-
-    Signal *a_irdy = (new Signal(name+"a_irdy"))->setWidth(1);
-    Signal *a_data = (new Signal(name+"a_data"))->setWidth(w);
-    Signal *a_trdy = (new Signal(name+"a_trdy"))->setWidth(1);
-    
-    ASSERT(1 == a->channel->irdy->getWidth());
-    ASSERT(w == a->channel->data->getWidth());
-    ASSERT(1 == a->channel->trdy->getWidth());
-    a_irdy            -> setExpr( new Id_Expr(1 , a->channel->irdy ) );
-    a_data            -> setExpr( new Id_Expr(w , a->channel->data ) );
-    a->channel->trdy  -> setExpr( new Id_Expr(1 , a_trdy           ) );
-
-    Signal *b_irdy = new Signal(name+"b_irdy");
-    Signal *b_data = new Signal(name+"b_data");
-    Signal *b_trdy = new Signal(name+"b_trdy");
-    
-    b_irdy            -> setExpr( new Id_Expr(1 , b->channel->irdy ) );
-    b_data            -> setExpr( new Id_Expr(w , b->channel->data ) );
-    b->channel->trdy  -> setExpr( new Id_Expr(1 , b_trdy           ) );
-    
-    Signal *o_irdy = new Signal(name+"o_irdy");
-    Signal *o_data = new Signal(name+"o_data");
-    Signal *o_trdy = new Signal(name+"o_trdy");
-
-    o->channel->data   -> setExpr( new Id_Expr(w , o_data           ) );
-    o->channel->irdy   -> setExpr( new Id_Expr(1 , o_irdy           ) );
-    o_trdy             -> setExpr( new Id_Expr(1 , o->channel->trdy ) );
-
-    // the logic for the join:
-    o_data       -> setExpr ( new Id_Expr( w , a_data) );
-    o_irdy       -> setExpr ( new And_Expr( a_irdy , b_irdy) );
-    a_trdy       -> setExpr ( new And_Expr( o_trdy , b_irdy) );
-    b_trdy       -> setExpr ( new And_Expr( o_trdy , a_irdy) );    		    
-        
-    return;
-  }
-
-};
-
-
-
-
-
-class Fork : public Primitive {
-public:
-  Targ_Port *portI;
-  Init_Port *portA;
-  Init_Port *portB;
-
-  Fork(Channel *in, Channel *out1, Channel *out2, string n, Hier_Object *p) : Primitive(n,p) {
-    portI = new Targ_Port("i",in,this);
-    portA = new Init_Port("a",out1,this);
-    portB = new Init_Port("b",out2,this);
-    (*network::n).primitives.push_back(this);
-  }
-
-  void propagateLatencyLemmas( ) {
-
-    if (portA->channel->qos->hasTargetBound() and portB->channel->qos->hasTargetBound() )
-      {
-     	int n = max (portA->channel->qos->getTargetBound() , portB->channel->qos->getTargetBound() );
-     	portA->channel->qos->updateTargetResponseBound( n );
-      }
-
-    Port *aa;
-    Port *bb;
-
-
-    for (int i = 0; i <=1; i++) 
-      {
-	if (i==0) { aa=portA; bb=portB;} else {aa=portB; bb=portA;}
-	// all the bounds to set on aa:
-	if (portI->channel->qos->hasInitiatorBound() and bb->channel->qos->hasTargetBound() )
-	  {
-	    int n = max (portA->channel->qos->getInitiatorBound() , bb->channel->qos->getTargetBound() );
-	    aa->channel->qos->updateInitiatorBound( n );
-	  }
-
-	// 	if (portI->channel->qos->hasInitiatorBound() and bb->channel->hasTargetResponseBound() )
-	// 	  {
-	// 	    int n = max (portA->channel->initiatorBound , bb->channel->targetBound);
-	// 	    aa->channel->qos->updateInitiatorBound( n , modifiedChannels);
-	// 	  }
-	
-	// 	if (bb->channel->qos->hasInitiatorBound() and o->channel->hasTargetResponseBound() )
-	// 	  {
-	// 	    int n = max (bb->channel->initiatorBound , o->channel->targetResponseBound);
-	// 	    aa->channel->qos->updateTargetResponseBound( n , modifiedChannels);
-	// 	  }
-	
-	// 	if (o->channel->qos->hasTimeToSinkBound() and aa->channel->hasInitiatorResponseBound() )
-	// 	  {
-	// 	    int n = o->channel->timeToSinkBound + aa->channel->initiatorResponseBound;
-	// 	    aa->channel->qos->updateTimeToSinkBound(n , modifiedChannels);
-	// 	  }
-
-	// 	if (o->channel->qos->hasTimeToSinkBound() and aa->channel->qos->hasInitiatorBound() )
-	// 	  {
-	// 	    int n = o->channel->timeToSinkBound + aa->channel->initiatorBound;
-	// 	    aa->channel->qos->updateTimeToSinkBound(n , modifiedChannels);
-	// 	  }	
-      }
-
-    return;
-  }
-
-
-
-
-  void buildPrimitiveLogic ( ) {
-
-    unsigned int w = portI->channel->data->getWidth();
-    ASSERT (w == portA->channel->data->getWidth());
-    ASSERT (w == portB->channel->data->getWidth());
-
-    Signal *i_irdy = new Signal(name+"i_irdy");
-    Signal *i_data = new Signal(name+"i_data");
-    Signal *i_trdy = new Signal(name+"i_trdy");
-    
-    i_irdy                -> setExpr( new Id_Expr(1 , portI->channel->irdy ) );
-    i_data                -> setExpr( new Id_Expr(w , portI->channel->data ) );
-    portI->channel->trdy  -> setExpr( new Id_Expr(1 , i_trdy           ) );
-     
-    Signal *a_irdy = new Signal(name+"a_irdy");
-    Signal *a_data = new Signal(name+"a_data");
-    Signal *a_trdy = new Signal(name+"a_trdy");
-
-    portA->channel->data   -> setExpr( new Id_Expr(w , a_data           ) );
-    portA->channel->irdy   -> setExpr( new Id_Expr(1 , a_irdy           ) );
-    a_trdy                 -> setExpr( new Id_Expr(1 , portA->channel->trdy ) );
-
-    Signal *b_irdy = new Signal(name+"b_irdy");
-    Signal *b_data = new Signal(name+"b_data");
-    Signal *b_trdy = new Signal(name+"b_trdy");
-
-    portB->channel->data   -> setExpr( new Id_Expr(w , b_data           ) );
-    portB->channel->irdy   -> setExpr( new Id_Expr(1 , b_irdy           ) );
-    b_trdy                 -> setExpr( new Id_Expr(1 , portB->channel->trdy ) );
-
-    // logic for fork:
-    a_irdy        -> setExpr ( new And_Expr( i_irdy , b_trdy) );
-    b_irdy        -> setExpr ( new And_Expr( i_irdy , a_trdy) );
-    a_data        -> setExpr ( new Id_Expr(w, i_data));
-    b_data        -> setExpr ( new Id_Expr(w, i_data));
-    i_trdy        -> setExpr ( new And_Expr( a_trdy , b_trdy ));
-    return;
-  }
-
-};
-
-
-
-
-class Switch : public Primitive {
-public:
-  Targ_Port *portI;
-  Init_Port *portA;
-  Init_Port *portB;
-
-  Switch(Channel *in, Channel *out1, Channel *out2, string n, Hier_Object *p) : Primitive(n,p) {
-    portI = new Targ_Port("i",in,this);
-    portA = new Init_Port("a",out1,this);
-    portB = new Init_Port("b",out2,this);
-
-    (*network::n).primitives.push_back(this);
-  }
-
-
-  void propagateLatencyLemmas( ) {
-
-    //     if (portA->channel->qos->hasTargetBound() and portB->channel->qos->hasTargetBound() )
-    //       {
-    //      	int n = max (portA->channel->targetBound , portB->channel->targetBound);
-    //      	portA->channel->qos->updateTargetResponseBound( n , modifiedChannels);
-    //       }
-
-    //     Port *aa;
-    //     Port *bb;
-
-    //     for (int i = 0; i <=1; i++) 
-    //       {
-    // 	if (i==0) { aa=portA; bb=portB;} else {aa=portB; bb=portA;}
-    // 	// all the bounds to set on aa:
-    // 	if (portI->channel->qos->hasInitiatorBound() and bb->channel->qos->hasTargetBound() )
-    // 	  {
-    // 	    int n = max (portA->channel->initiatorBound , bb->channel->targetBound);
-    // 	    aa->channel->qos->updateInitiatorBound( n , modifiedChannels);
-    // 	  }
-
-    //       }
-
-    return;
-  }
-
-
-  void buildPrimitiveLogic ( ) {
-
-    unsigned int w = portI->channel->data->getWidth();
-    ASSERT (w == portA->channel->data->getWidth());
-    ASSERT (w == portB->channel->data->getWidth());
-
-    
-    Signal *i_irdy = new Signal(name+"i_irdy");
-    Signal *i_data = new Signal(name+"i_data");
-    Signal *i_trdy = new Signal(name+"i_trdy");
-    
-    i_irdy                -> setExpr( new Id_Expr(1 , portI->channel->irdy ) );
-    i_data                -> setExpr( new Id_Expr(w , portI->channel->data ) );
-    portI->channel->trdy  -> setExpr( new Id_Expr(1 , i_trdy           ) );
-     
-    Signal *a_irdy = new Signal(name+"a_irdy");
-    Signal *a_data = new Signal(name+"a_data");
-    Signal *a_trdy = new Signal(name+"a_trdy");
-
-    portA->channel->data   -> setExpr( new Id_Expr(w , a_data           ) );
-    portA->channel->irdy   -> setExpr( new Id_Expr(1 , a_irdy           ) );
-    a_trdy                 -> setExpr( new Id_Expr(1 , portA->channel->trdy ) );
-
-    Signal *b_irdy = new Signal(name+"b_irdy");
-    Signal *b_data = new Signal(name+"b_data");
-    Signal *b_trdy = new Signal(name+"b_trdy");
-
-    portB->channel->data   -> setExpr( new Id_Expr(w , b_data           ) );
-    portB->channel->irdy   -> setExpr( new Id_Expr(1 , b_irdy           ) );
-    b_trdy                 -> setExpr( new Id_Expr(1 , portB->channel->trdy ) );
-
-    Expr *routeToA = new Eq_Expr( i_data , new Bvconst_Expr(3,w) );
-    Expr *routeToB = new Not_Expr( routeToA);
-
-    a_irdy        -> setExpr ( new And_Expr( routeToA , i_irdy) );
-    b_irdy        -> setExpr ( new And_Expr( routeToB , i_irdy) );
-
-    a_data        -> setExpr ( (new Case_Expr(w))
-			       -> setDefault( new Bvconst_Expr(0,w))
-			       -> addCase(routeToA, i_data));
-      
-    b_data        -> setExpr ( (new Case_Expr(w))
-			       -> setDefault( new Bvconst_Expr(0,w))
-			       -> addCase( routeToB, i_data));
-
-    i_trdy        -> setExpr ( new Or_Expr( new And_Expr(routeToB, b_trdy),
-					    new And_Expr(routeToA, a_trdy)  )
-			       );    
-    return;
-  }
-
-};
-
-
-
-
 
 
 
@@ -1971,12 +501,9 @@ public:
     (token_sink)->setTypeEager();
 	 
     new Fork(a,out,c,"f1",this);
-    //    credit_queue = 
     Queue *oc = new Queue(c,d,depth,"outstanding_credits",this);
     oc->setType(PACKET_CREDIT);
     new Join(d,in,b,"j1",this);        
-
-    //    new Queue(in,out,depth,"outstanding_credits",this);
 
   }
 
@@ -2012,48 +539,6 @@ public:
 };
 
 
-// class Ex_Tree : public Composite {
-// public:
-//   Ex_Tree(string n, Hier_Object *p) : Composite(n,p) {
-
-//     Channel *a = new Channel("a",4,this);
-//     Channel *b = new Channel("b",4,this);
-//     Channel *c = new Channel("c",4,this);
-//     Channel *d = new Channel("d",4,this);
-//     Channel *e = new Channel("e",4,this);
-//     Channel *f = new Channel("f",4,this);
-//     Channel *g = new Channel("g",4,this);
-//     Channel *h = new Channel("h",4,this);
-//     Channel *i = new Channel("i",4,this);
-//     Channel *j = new Channel("j",4,this);
-//     Channel *k = new Channel("k",4,this);
-//     Channel *l = new Channel("l",4,this);
-                
-//     Source *src_a = new Source(a,"src_a",this);
-//     Source *src_c = new Source(c,"src_c",this);
-//     Source *src_f = new Source(f,"src_f",this);
-//     Source *src_i = new Source(i,"src_i",this);
-
-//     new Merge(b,c,d,"m1",this);
-//     new Merge(e,f,g,"m2",this);
-//     new Merge(h,j,k,"m3",this);
- 
-//     new Queue(a,b,2,"q1",this);
-//     new Queue(d,e,2,"q2",this);
-//     new Queue(g,h,2,"q3",this);
-//     new Queue(i,j,2,"q4",this);
-//     new Queue(k,l,2,"q5",this);
-
-//     //Sink *pkt_sink = new Sink(l,"pkt_sink",this);
-//     Sink *sink_l = new Sink(l,"sink_l",this);
-//     (sink_l)->setTypeBoundedResponse(1);
-//     (src_a)->setTypeNondeterministic();
-//     (src_c)->setTypeNondeterministic();
-//     (src_f)->setTypeNondeterministic();
-//     (src_i)->setTypeNondeterministic();
-        
-//   }    
-// };
 
 
 
@@ -2071,13 +556,9 @@ public:
     new Join(a,c,d,"m1",this);
     Sink *sink_d = new Sink(d,"sink_l",this);
 
-    //(sink_d)->setTypeEager();
-    //    (sink_d)->setTypeBoundedResponse(3);
     (sink_d)->setTypeBoundedResponse(3);
-    //    (src_a)->setTypeNondeterministic();
     (src_a)->setTypeEager();
     (src_c)->setTypeEager();
-    //     (src_c)->setTypeNondeterministic();
   }    
 };
 
@@ -2111,131 +592,6 @@ public:
 
 
 
-class Ex_Tree0 : public Composite {
-public:
-  Ex_Tree0(string n, Hier_Object *p) : Composite(n,p) {
-
-    Channel *a = new Channel("a",10,this);
-    Channel *c = new Channel("c",10,this);
-    Channel *d = new Channel("d",10,this);
-                
-    Source *src_a = new Source(a,"src_a",this);
-    Source *src_c = new Source(c,"src_c",this);
-    new Merge(a,c,d,"m1",this);
-    Sink *sink_d = new Sink(d,"sink_l",this);
-
-    //(sink_d)->setTypeEager();
-    (sink_d)->setTypeBoundedResponse(3);
-    (src_a)->setTypeNondeterministic();
-    (src_c)->setTypeNondeterministic();
-  }    
-};
-
-
-class Ex_Tree1 : public Composite {
-public:
-  Ex_Tree1(string n, Hier_Object *p) : Composite(n,p) {
-
-    Channel *a = new Channel("a",2,this);
-    Channel *b = new Channel("b",2,this);
-    Channel *c = new Channel("c",2,this);
-    Channel *d = new Channel("d",2,this);
-                
-    Source *src_a = new Source(a,"src_a",this);
-    Source *src_c = new Source(c,"src_c",this);
-
-    new Queue(a,b,2,"q1",this);
-    new Merge(b,c,d,"m1",this);
-
-    Sink *sink_d = new Sink(d,"sink_l",this);
-
-    //(sink_d)->setTypeEager();
-    (sink_d)->setTypeBoundedResponse(1);
-    (src_a)->setTypeNondeterministic();
-    (src_c)->setTypeNondeterministic();
-        
-  }
-};
-
-class Ex_Tree2 : public Composite {
-public:
-  Ex_Tree2(string n, Hier_Object *p) : Composite(n,p) {
-
-    Channel *a = new Channel("a",4,this);
-    Channel *b = new Channel("b",4,this);
-    Channel *c = new Channel("c",4,this);
-    Channel *d = new Channel("d",4,this);
-
-    Channel *e = new Channel("e",4,this);
-    Channel *f = new Channel("f",4,this);
-    Channel *g = new Channel("g",4,this);
-                
-    Source *src_a = new Source(a,"src_a",this);
-    Source *src_c = new Source(c,"src_c",this);
-    Source *src_f = new Source(f,"src_f",this);
-
-    Queue *q1 = new Queue(a,b,2,"q1",this);
-    new Merge(b,c,d,"m1",this);
-    Queue *q2 = new Queue(d,e,2,"q2",this);
-    new Merge(e,f,g,"m2",this);
-
-//     q2 -> slotQos[1] -> disable(); 
-//     q2 -> slotQos[0] -> disable(); 
-//    q2 -> slotQos[1] -> disable(); 
-//    q2 -> slotQos[0] -> disable(); 
-
-    Sink *sink_g = new Sink(g,"sink_g",this);
-
-    //(sink_d)->setTypeEager();
-    (sink_g)->setTypeBoundedResponse(1);
-    (src_a)->setTypeNondeterministic();
-    (src_c)->setTypeNondeterministic();
-    (src_f)->setTypeNondeterministic();
-        
-  }
-};
-
-class Ex_Tree3 : public Composite {
-public:
-  Ex_Tree3(string n, Hier_Object *p) : Composite(n,p) {
-
-    Channel *a = new Channel("a",4,this);
-    Channel *b = new Channel("b",4,this);
-    Channel *c = new Channel("c",4,this);
-    Channel *d = new Channel("d",4,this);
-
-    Channel *e = new Channel("e",4,this);
-    Channel *f = new Channel("f",4,this);
-    Channel *g = new Channel("g",4,this);
-
-    Channel *h = new Channel("h",4,this);
-    Channel *i = new Channel("i",4,this);
-    Channel *j = new Channel("j",4,this);
-                
-    Source *src_a = new Source(a,"src_a",this);
-    Source *src_c = new Source(c,"src_c",this);
-    Source *src_f = new Source(f,"src_f",this);
-    Source *src_i = new Source(i,"src_i",this);
-
-    Queue *q1 = new Queue(a,b,2,"q1",this);
-    new Merge(b,c,d,"m1",this);
-    Queue *q2 = new Queue(d,e,2,"q2",this);
-    new Merge(e,f,g,"m2",this);
-    Queue *q3 = new Queue(g,h,2,"q3",this);
-    new Merge(h,i,j,"m3",this);
-
-
-    Sink *sink_j = new Sink(j,"sink_j",this);
-
-    (sink_j)->setTypeBoundedResponse(1);
-    (src_a)->setTypeNondeterministic();
-    (src_c)->setTypeNondeterministic();
-    (src_f)->setTypeNondeterministic();
-    (src_i)->setTypeNondeterministic();
-        
-  }
-};
-
 
 
 class Ex_Queue : public Composite {
@@ -2268,7 +624,6 @@ public:
 class Ex_Tree : public Composite {
 public:
   Ex_Tree(string n, Hier_Object *p, int numStages = 2) : Composite(n,p) {
-    cout << "numStages = " << numStages << "\n";
     vector <Channel *> ca (numStages);
     vector <Channel *> cb (numStages);
     vector <Channel *> cc (numStages);
@@ -2309,7 +664,7 @@ public:
       ch[i] = new Channel("ch"+itos(i) ,4,this);
     
     for (int i=0; i< numQueues; i++) 
-      new Queue(ch[i], ch[i+1] , 2 , "q"+itos(i) , this);//Channel("ch"+itos(i) ,4,this);
+      new Queue(ch[i], ch[i+1] , 2 , "q"+itos(i) , this);
         
     Source *src_a = new Source(ch[0],"src_a",this);
     (src_a)->setTypeNondeterministic();
@@ -2321,16 +676,40 @@ public:
 
 
 
+
+class Two_Queues : public Composite {
+public:
+  Two_Queues(string n, Hier_Object *p) 
+    : Composite(n,p) {
+    
+    Channel *a = new Channel("a",4,this);
+    Channel *b = new Channel("b",4,this);
+    Channel *c = new Channel("c",4,this);
+    a->setPacketType(PACKET_DATA);
+    b->setPacketType(PACKET_DATA);
+    c->setPacketType(PACKET_DATA);
+
+    Source *src = new Source(a,"src",this);
+    new Queue(a,b,2,"q1",this);
+    new Queue(b,c,2,"q2",this);
+    Sink *snk = new Sink(c,"snk",this);
+    (snk)->setTypeBoundedResponse(2);
+    (src)->setTypeNondeterministic();
+  }    
+};
+
+
+
+
+
+
 int main (int argc, char **argv)
 {
 
   cout << "\n\n\n======================================================\n";
-  logic::c = new Ckt();
+  g_ckt = new Ckt();
 
-  //string network = "ex_tree";
-  //string network = "ex_queue_chain";
-  string network = "ex_tree1";
-  //string network = "ex_queue";
+  string network = "ex_queue";
   string fnameOut = "dump.v";
 
 
@@ -2342,28 +721,28 @@ int main (int argc, char **argv)
 
       if        ( s == "--dump")    { fnameOut = argv[++i];
       } else if ( s == "--network") { network  = argv[++i];
-      } else if ( s == "--t_max")                          { logic::c->voptions->setTMax( atoi(argv[++i]) );
-      } else if ( s ==  "--enable_persistance")            { logic::c->voptions->enablePersistance();
-      } else if ( s == "--disable_persistance")            { logic::c->voptions->disablePersistance();
-      } else if ( s ==  "--enable_lemmas")                 { logic::c->voptions->enablePhiLQueue();
-      } else if ( s == "--disable_lemmas")                 { logic::c->voptions->disablePhiLQueue();
-      } else if ( s ==  "--enable_phig")                   { logic::c->voptions->enablePhiGQueue();
-      } else if ( s == "--disable_phig")                   { logic::c->voptions->disablePhiGQueue();
-      } else if ( s ==  "--enable_psi")                    { logic::c->voptions->enablePsi() ;
-      } else if ( s == "--disable_psi")                    { logic::c->voptions->disablePsi(); 
-      } else if ( s == "--enable_bound_channel")           { logic::c->voptions->enableBoundChannel();
-      } else if ( s == "--disable_bound_channel")          { logic::c->voptions->disableBoundChannel();
-      } else if ( s == "--enable_response_bound_channel")  { logic::c->voptions->enableResponseBoundChannel();
-      } else if ( s == "--disable_response_bound_channel") { logic::c->voptions->disableResponseBoundChannel();
+      } else if ( s == "--t_max")                          { g_ckt->voptions->setTMax( atoi(argv[++i]) );
+      } else if ( s ==  "--enable_persistance")            { g_ckt->voptions->enablePersistance();
+      } else if ( s == "--disable_persistance")            { g_ckt->voptions->disablePersistance();
+      } else if ( s ==  "--enable_lemmas")                 { g_ckt->voptions->enablePhiLQueue();
+      } else if ( s == "--disable_lemmas")                 { g_ckt->voptions->disablePhiLQueue();
+      } else if ( s ==  "--enable_phig")                   { g_ckt->voptions->enablePhiGQueue();
+      } else if ( s == "--disable_phig")                   { g_ckt->voptions->disablePhiGQueue();
+      } else if ( s ==  "--enable_psi")                    { g_ckt->voptions->enablePsi() ;
+      } else if ( s == "--disable_psi")                    { g_ckt->voptions->disablePsi(); 
+      } else if ( s == "--enable_bound_channel")           { g_ckt->voptions->enableBoundChannel();
+      } else if ( s == "--disable_bound_channel")          { g_ckt->voptions->disableBoundChannel();
+      } else if ( s == "--enable_response_bound_channel")  { g_ckt->voptions->enableResponseBoundChannel();
+      } else if ( s == "--disable_response_bound_channel") { g_ckt->voptions->disableResponseBoundChannel();
       } else {
 	ASSERT2(0,"cmd line argument "+s+" is not understood\n");
       }
     }
 
-  logic::c -> voptions->printSettings();
+  g_ckt -> voptions->printSettings();
 
   cout << "\n\nnetwork = " << network << "\n";
-  network::n = new Network();
+  g_network = new Network();
 
 
   // create one of the networks depending on cmd line args. Top level
@@ -2371,7 +750,6 @@ int main (int argc, char **argv)
   // contained within one
   Composite *hier_root = new Composite();
   if      (network == "credit_loop")        {  new Credit_Loop(     "top",hier_root ); } 
-  //  else if (network == "ex_tree")            {  new Ex_Tree(         "top",hier_root ); } 
   else if (network == "ex_tree")            {  new Ex_Tree(         "top",hier_root ); } 
   else if (network == "ex_tree1")           {  new Ex_Tree(         "top",hier_root , 1 ); } 
   else if (network == "ex_tree2")           {  new Ex_Tree(         "top",hier_root , 2 ); } 
@@ -2382,6 +760,7 @@ int main (int argc, char **argv)
   else if (network == "ex_tree7")           {  new Ex_Tree(         "top",hier_root , 7 ); } 
   else if (network == "ex_tree8")           {  new Ex_Tree(         "top",hier_root , 8 ); } 
   else if (network == "ex_tree9")           {  new Ex_Tree(         "top",hier_root , 9 ); } 
+  else if (network == "two_queues")         {  new Two_Queues(      "top",hier_root  ); } 
 
   else if (network == "ex_queue")           {  new Ex_Queue(        "top",hier_root , 2 ); } 
   else if (network == "ex_queue2")          {  new Ex_Queue(        "top",hier_root , 2 ); } 
@@ -2408,16 +787,16 @@ int main (int argc, char **argv)
   else {  ASSERT(0);  }
 
 
-  network::n->printNetwork();
-  network::n->addLatencyLemmas();    // propagate assertions
+  g_network->printNetwork();
+  g_network->addLatencyLemmas();    // propagate assertions
 
-  logic::c -> voptions->printSettings();
-  logic::c -> buildNetworkLogic( network::n );
-  logic::c -> voptions->printSettings();
-  //  delete network::n;
+  g_ckt -> voptions->printSettings();
+  g_ckt -> buildNetworkLogic( g_network );
+  g_ckt -> voptions->printSettings();
+  //  delete g_network;
 
-  logic::c -> dumpAsVerilog( fnameOut );     
-  //logic::c -> dumpAsUclid( fnameOut );     
+  g_ckt -> dumpAsVerilog( fnameOut );     
+  //g_ckt -> dumpAsUclid( fnameOut );     
 
   cout << "ending main.cpp normally\n";
 
