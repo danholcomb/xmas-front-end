@@ -62,10 +62,9 @@ while (($t_min <= $t_test) and ($t_test <= $t_max)) {
      
      # use psi invariants because it speeds up BMC
      # This is sound/convservative, because we only care about finding the unsat result
-     system('./dump.out --network '.$Network.' --t_max '.$t_test.' --disable_lemmas --enable_psi --enable_persistance --disable_bound_channel --disable_response_bound_channel --dump dump.v');
-
+     my $r = system('./dump.out --network '.$Network.' --t_max '.$t_test.' --disable_lemmas --enable_psi --enable_persistance --disable_bound_channel --disable_response_bound_channel --dump dump.v');
+     if ($r != 0) { croak; }
      system('ulimit -St '.$Bmc_Timeout.'; abc-bmc.sh dump.v '.$Bmc_Frames.'');
-
      my $out = readFileScalar('dump.abc');
      my $r = parse_bmc($out);
      if ($r->{TIMEOUT}) {
