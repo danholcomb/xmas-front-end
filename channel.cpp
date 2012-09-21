@@ -28,8 +28,7 @@ void Channel::Init(string n, unsigned int w, Hier_Object *p) {
   trdy = (new Signal(name+"trdy"))->setWidth(1);
 
   data = (new Signal(name+"data")) 
-    -> setExpr((new Bvconst_Expr(1))->setWidth(w) );
-    
+    -> setExpr( new Bvconst_Expr(1,w) );
 
   dBits = make_pair(w-1 , 0); //msb is first
     

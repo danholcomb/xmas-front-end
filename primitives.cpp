@@ -86,7 +86,10 @@ void Join::propagateLatencyLemmas( ) {
 void Join::buildPrimitiveLogic ( ) {
 
   unsigned int w = o->channel->data->getWidth();
-  ASSERT (w == a->channel->data->getWidth() );
+
+  ASSERT2 (a->channel->getPacketType() == PACKET_CREDIT, "join must be restricted join");
+  // second input can be a second credit token or else data packet
+  //ASSERT (w == a->channel->data->getWidth() );
   ASSERT (w == b->channel->data->getWidth() );
 
   //     unsigned int w = o->channel->getDataWidth();
@@ -94,37 +97,40 @@ void Join::buildPrimitiveLogic ( ) {
   //     ASSERT (w == b->channel->getDataWidth() );
 
   Signal *a_irdy = (new Signal(name+"a_irdy"))->setWidth(1);
-  Signal *a_data = (new Signal(name+"a_data"))->setWidth(w);
+  Signal *a_data = (new Signal(name+"a_data"))->setWidth(1);
   Signal *a_trdy = (new Signal(name+"a_trdy"))->setWidth(1);
     
-  ASSERT(1 == a->channel->irdy->getWidth());
-  ASSERT(w == a->channel->data->getWidth());
-  ASSERT(1 == a->channel->trdy->getWidth());
-  a_irdy            -> setExpr( new Id_Expr(1 , a->channel->irdy ) );
-  a_data            -> setExpr( new Id_Expr(w , a->channel->data ) );
-  a->channel->trdy  -> setExpr( new Id_Expr(1 , a_trdy           ) );
+  //   ASSERT(1 == a->channel->irdy->getWidth());
+  //   ASSERT(w == a->channel->data->getWidth());
+  //   ASSERT(1 == a->channel->trdy->getWidth());
+
+  a_irdy            -> setExpr( new Id_Expr( a->channel->irdy ) );
+  a_data            -> setExpr( new Id_Expr( a->channel->data ) );
+  a->channel->trdy  -> setExpr( new Id_Expr( a_trdy           ) );
 
   Signal *b_irdy = new Signal(name+"b_irdy");
   Signal *b_data = new Signal(name+"b_data");
   Signal *b_trdy = new Signal(name+"b_trdy");
     
-  b_irdy            -> setExpr( new Id_Expr(1 , b->channel->irdy ) );
-  b_data            -> setExpr( new Id_Expr(w , b->channel->data ) );
-  b->channel->trdy  -> setExpr( new Id_Expr(1 , b_trdy           ) );
+  b_irdy            -> setExpr( new Id_Expr( b->channel->irdy ) );
+  b_data            -> setExpr( new Id_Expr( b->channel->data ) );
     
   Signal *o_irdy = new Signal(name+"o_irdy");
   Signal *o_data = new Signal(name+"o_data");
   Signal *o_trdy = new Signal(name+"o_trdy");
 
-  o->channel->data   -> setExpr( new Id_Expr(w , o_data           ) );
-  o->channel->irdy   -> setExpr( new Id_Expr(1 , o_irdy           ) );
-  o_trdy             -> setExpr( new Id_Expr(1 , o->channel->trdy ) );
+  o_trdy             -> setExpr( new Id_Expr( o->channel->trdy ) );
+
 
   // the logic for the join:
-  o_data       -> setExpr ( new Id_Expr( w , a_data) );
+  o_data       -> setExpr ( new Id_Expr( b_data) );
   o_irdy       -> setExpr ( new And_Expr( a_irdy , b_irdy) );
   a_trdy       -> setExpr ( new And_Expr( o_trdy , b_irdy) );
   b_trdy       -> setExpr ( new And_Expr( o_trdy , a_irdy) );    		    
+
+  b->channel->trdy  -> setExpr( new Id_Expr( b_trdy           ) );
+  o->channel->data   -> setExpr( new Id_Expr( o_data           ) );
+  o->channel->irdy   -> setExpr( new Id_Expr( o_irdy           ) );
         
   return;
 }
@@ -251,8 +257,7 @@ void Queue::buildPrimitiveLogic ( ) {
   Signal *o_irdy = (new Signal(name+"o_irdy"))
     -> setExpr(new Not_Expr(isEmpty));
  
-  o->channel->data     -> setExpr( (new Id_Expr( o_data )) ->setWidth(wPacket)  );
-  o->channel->irdy     -> setExpr( (new Id_Expr( o_irdy )) ->setWidth(1) );
+  //  o->channel->data     -> setExpr( (new Id_Expr( o_data )) ->setWidth(wPacket)  );
   o_trdy               -> setExpr( (new Id_Expr( o->channel->trdy )) -> setWidth(1) );
 
   Signal *readEnable   = (new Signal(name+"readEnable"))
@@ -298,6 +303,7 @@ void Queue::buildPrimitiveLogic ( ) {
     -> setNxtExpr (nxt_tail);
   
   Signal *tail_plus_1 = BvIncrExprModM(tail, physicalDepth, name+"tailPlus1ModM");
+
   
   nxt_tail
     -> setName(name+"nxt_tail")
@@ -316,6 +322,7 @@ void Queue::buildPrimitiveLogic ( ) {
     -> setNxtExpr ( nxt_head );
 
   Signal *head_plus_1 = BvIncrExprModM(head, physicalDepth, name+"headPlus1ModM");
+
 
   nxt_head 
     -> setName (name+"nxt_head")
@@ -368,12 +375,8 @@ void Queue::buildPrimitiveLogic ( ) {
 	-> setExpr( (new And_Expr())
 		    -> addInput (is_head)
 		    -> addInput (readEnable)
-		    //		    -> addInput (new Not_Expr(write_bslot))
 		    );
 
-      //Signal *foo = (new Signal(name+"readNeqWrite"))
-      // -> setExpr(new Not_Expr(new And_Expr(write_bslot, read_bslot)));
-      //foo->assertSignalTrue();
 
       nxt_buffer 
 	-> setExpr( (new Case_Expr())
@@ -499,6 +502,9 @@ void Queue::buildPrimitiveLogic ( ) {
 	      }
 	}
     }  
+
+  o->channel->data     -> setExpr( (new Id_Expr( o_data ))  );
+  o->channel->irdy     -> setExpr( (new Id_Expr( o_irdy )) ->setWidth(1) );
   
   return;
 }
@@ -586,39 +592,48 @@ void Fork::propagateLatencyLemmas( ) {
 void Fork::buildPrimitiveLogic ( ) {
 
   unsigned int w = portI->channel->data->getWidth();
-  ASSERT (w == portA->channel->data->getWidth());
+  //  ASSERT (w == portA->channel->data->getWidth());
   ASSERT (w == portB->channel->data->getWidth());
+
+  ASSERT2 (portA->channel->getPacketType() == PACKET_CREDIT, "must be restricted fork");
+  // second input can be a second credit token or else data packet
+  //ASSERT (w == a->channel->data->getWidth() );
+  //  ASSERT (w == b->channel->data->getWidth() );
+
 
   Signal *i_irdy = new Signal(name+"i_irdy");
   Signal *i_data = new Signal(name+"i_data");
   Signal *i_trdy = new Signal(name+"i_trdy");
     
-  i_irdy                -> setExpr( new Id_Expr(1 , portI->channel->irdy ) );
-  i_data                -> setExpr( new Id_Expr(w , portI->channel->data ) );
-  portI->channel->trdy  -> setExpr( new Id_Expr(1 , i_trdy           ) );
+  i_irdy                -> setExpr( new Id_Expr( portI->channel->irdy ) );
+  i_data                -> setExpr( new Id_Expr( portI->channel->data ) );
      
   Signal *a_irdy = new Signal(name+"a_irdy");
   Signal *a_data = new Signal(name+"a_data");
   Signal *a_trdy = new Signal(name+"a_trdy");
 
-  portA->channel->data   -> setExpr( new Id_Expr(w , a_data           ) );
-  portA->channel->irdy   -> setExpr( new Id_Expr(1 , a_irdy           ) );
-  a_trdy                 -> setExpr( new Id_Expr(1 , portA->channel->trdy ) );
+  a_trdy                 -> setExpr( new Id_Expr( portA->channel->trdy ) );
 
   Signal *b_irdy = new Signal(name+"b_irdy");
   Signal *b_data = new Signal(name+"b_data");
   Signal *b_trdy = new Signal(name+"b_trdy");
 
-  portB->channel->data   -> setExpr( new Id_Expr(w , b_data           ) );
-  portB->channel->irdy   -> setExpr( new Id_Expr(1 , b_irdy           ) );
-  b_trdy                 -> setExpr( new Id_Expr(1 , portB->channel->trdy ) );
+  b_trdy                 -> setExpr( new Id_Expr( portB->channel->trdy ) );
 
   // logic for fork:
   a_irdy        -> setExpr ( new And_Expr( i_irdy , b_trdy) );
   b_irdy        -> setExpr ( new And_Expr( i_irdy , a_trdy) );
-  a_data        -> setExpr ( new Id_Expr(w, i_data));
-  b_data        -> setExpr ( new Id_Expr(w, i_data));
+  //  a_data        -> setExpr ( new Id_Expr( i_data));
+  a_data        -> setExpr ( new Bvconst_Expr(1, 1));
+  b_data        -> setExpr ( new Id_Expr( i_data));
   i_trdy        -> setExpr ( new And_Expr( a_trdy , b_trdy ));
+
+  portA->channel->data   -> setExpr( new Id_Expr( a_data           ) );
+  portA->channel->irdy   -> setExpr( new Id_Expr( a_irdy           ) );
+  portB->channel->data   -> setExpr( new Id_Expr( b_data           ) );
+  portB->channel->irdy   -> setExpr( new Id_Expr( b_irdy           ) );
+  portI->channel->trdy  -> setExpr( new Id_Expr( i_trdy           ) );
+
   return;
 }
 
@@ -873,7 +888,6 @@ void Sink::buildPrimitiveLogic () {
 	-> setExpr( new Extract_Expr(g_ckt->oracleBus, msb, lsb) );
     }
 
-    
   Signal *waiting = (new Signal(name+"waiting")) 
     -> setExpr( new And_Expr( i->channel->trdy , new Not_Expr(i->channel->irdy) ));
 
@@ -940,17 +954,7 @@ void Source::buildPrimitiveLogic ( ) {
     }
   else  { ASSERT(0); }
 
-  //determine the bitwidths to use
-  unsigned int wData = o->channel->data->getWidth();
-  unsigned int wOracle = o->channel->getDWidth();
-  ASSERT(wOracle + g_ckt->tCurrent->getWidth() == wData);
 
-  unsigned int lsb = g_ckt->oracleBus->getWidth();
-  unsigned msb = lsb + wOracle - 1;
-  g_ckt->oracleBus->widen( wOracle );
-  Signal *oracle_data = (new Signal(name+"oracle_data"))
-    -> setExpr( new Extract_Expr(g_ckt->oracleBus, msb, lsb) );
-    
   Signal *blocked = (new Signal(name+"blocked"))
     -> setExpr( new And_Expr( o->channel->irdy, new Not_Expr(o->channel->trdy) )  );
 
@@ -958,20 +962,47 @@ void Source::buildPrimitiveLogic ( ) {
     -> setResetExpr( new Bvconst_Expr(0,1)  )
     -> setNxtExpr( blocked );
 
-  Expr *oracleCatClk = new Cat_Expr(g_ckt->tCurrent , oracle_data);
-  Signal *pre_data = (new Seq_Signal(name+"pre_data"))
-    -> setResetExpr( new Bvconst_Expr(0, wData) )
-    -> setNxtExpr (oracleCatClk );
+
+
+  //determine the bitwidths to use
+  unsigned int wData = o->channel->data->getWidth();
+  unsigned int wOracle = o->channel->getDWidth();
+  if (o->channel->getPacketType() == PACKET_DATA) {
+    ASSERT(wOracle + g_ckt->tCurrent->getWidth() == wData);
+    unsigned int lsb = g_ckt->oracleBus->getWidth();
+    unsigned msb = lsb + wOracle - 1;
+    g_ckt->oracleBus->widen( wOracle );
+    Signal *oracle_data = (new Signal(name+"oracle_data"))
+      -> setExpr( new Extract_Expr(g_ckt->oracleBus, msb, lsb) );
     
+
+    Expr *oracleCatClk = new Cat_Expr(g_ckt->tCurrent , oracle_data);
+    Signal *pre_data = (new Seq_Signal(name+"pre_data"))
+      -> setResetExpr( new Bvconst_Expr(0, wData) )
+      -> setNxtExpr (oracleCatClk );
+    
+
+    o->channel->data
+      -> setExpr ( (new Case_Expr())
+		   -> setDefault( oracleCatClk )
+		   -> addCase (preBlocked, pre_data)
+		   );
+
+  } 
+  else 
+    {
+      o->channel->irdy
+	-> setExpr( new Or_Expr( oracleIrdy, preBlocked) );
+
+      o->channel->data
+	-> setExpr ( (new Bvconst_Expr( 1,1)));
+
+    }    
+
+
   o->channel->irdy
     -> setExpr( new Or_Expr( oracleIrdy, preBlocked) );
 
-  o->channel->data
-    -> setExpr ( (new Case_Expr())
-		 -> setDefault( oracleCatClk )
-		 -> addCase (preBlocked, pre_data)
-		 );
-    
   return;
 }
 

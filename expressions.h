@@ -245,6 +245,7 @@ class Not_Expr : public Expr {
   Expr *_a;
  public:
  Not_Expr(Expr *a ) : Expr(1) {
+    ASSERT2((a->getWidth() == 1), "bitwidth problem: "+a->printExprVerilog() );
     ASSERT(a->getWidth() == 1);
     _a = a;
   }
@@ -264,7 +265,8 @@ class Id_Expr : public Expr {
   ASSERT(w == a->getWidth());
     _a = a;
   }
- Id_Expr(Expr *a ) : Expr() {
+ Id_Expr(Expr *a ) : Expr(a->getWidth()) {
+    ASSERT2(a->getWidth() > 0, "bad width for Id_Expr "+ a->printExprVerilog() );
     _a = a;
   }
 
@@ -430,7 +432,7 @@ class Signal : public Expr {
   virtual void assignSignalVerilog(ostream &f) {
     ASSERT(_e != 0);
     ASSERT2(_e->getWidth()>0, "width==0 for signal "+getName() );
-    ASSERT(hasExpr()); 
+    ASSERT2(hasExpr(),"no assignment for signal:"+getName()); 
     f << "assign " << setw(25) << left << name << " = " ;
     f << _e -> printExprVerilog() << ";\n";
     

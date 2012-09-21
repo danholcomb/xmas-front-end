@@ -198,13 +198,15 @@ void Ckt::buildNetworkLogic(Network *n) {
 	  (*it)->widenForTimestamp(wClk);
 	}
     }
+
+
+
   
   for (vector <Channel*>::iterator it = n->channels.begin(); it != n->channels.end(); it++ )
     (*it)->buildChannelLogic();
 
   for (vector <Primitive*>::iterator it = n->primitives.begin(); it != n->primitives.end(); it++ )
-    (*it)->buildPrimitiveLogic();
-
+   (*it)->buildPrimitiveLogic();
  
   return;
 };
@@ -297,6 +299,11 @@ Signal * BvIncrExprModM (Expr *a, unsigned int m, string name) {
 // print the QoS for all the channels and queue slots
 void Network::printQos( ostream &f) 
 {
+
+  for (vector <Channel*>::iterator it = (this)->channels.begin(); it != (this)->channels.end(); it++ ) 
+    f << (*it)->name << " w= " << (*it)->data->getWidth() << "\n"; 
+
+
   f << "\n===============================================================================\n";
   f << "Qos Report \n";
   for (vector <Channel*>::iterator it = (this)->channels.begin(); it != (this)->channels.end(); it++ ) 
@@ -311,7 +318,6 @@ void Network::printQos( ostream &f)
 
 void Network::addLatencyLemmas() 
 {
-  g_outQos.open("dump.qos");
 
   // initially only the sources/sinks need to be updated with own qos guarantees
   for (vector <Sink*>::iterator it = sinks.begin(); it != sinks.end(); it++ ) 
@@ -347,12 +353,11 @@ void Network::addLatencyLemmas()
       if (cnt++ >1000) ASSERT(0); 
     }
 
-  printQos(cout);
-  printQos(g_outQos);
+  //printQos(cout);
   
+  printQos(g_outQos);
 
   cout << "\n";
-  g_outQos.close();
   return;
 }
 
@@ -495,13 +500,18 @@ public:
   Credit_Counter(Channel *in, Channel *out, unsigned int de, string n, Hier_Object *p) :  Composite(n,p) {
 
     depth = de;
-    Channel *a = new Channel("a",10,this);
-    Channel *b = new Channel("b",10,this);
-    Channel *c = new Channel("c",10,this);
-    Channel *d = new Channel("d",10,this);
-	 
+    Channel *a = new Channel("a",this);
+    Channel *b = new Channel("b",this);
+    Channel *c = new Channel("c",this);
+    Channel *d = new Channel("d",this);
+    a->setPacketType(PACKET_CREDIT);
+    b->setPacketType(PACKET_CREDIT);
+    c->setPacketType(PACKET_CREDIT);
+    d->setPacketType(PACKET_CREDIT);
+
     Source *token_src = new Source(a,"token_src",this);
     (token_src)->setTypeEager();
+
     Sink *token_sink = new Sink(b,"token_sink",this);
     (token_sink)->setTypeEager();
 	 
@@ -518,27 +528,39 @@ class Credit_Loop : public Composite {
 public:
   Credit_Loop(string n, Hier_Object *p) : Composite(n,p) {
  
-    Channel *a = new Channel("a",10,this);
-    Channel *b = new Channel("b",10,this);
-    Channel *c = new Channel("c",10,this);
-    Channel *d = new Channel("d",10,this);
-    Channel *e = new Channel("e",10,this);
-    Channel *f = new Channel("f",10,this);
-    Channel *g = new Channel("g",10,this);
-                
+    Channel *a = new Channel("a",2,this);
+    Channel *b = new Channel("b",2,this);
+    Channel *c = new Channel("c",2,this);
+    Channel *d = new Channel("d",2,this);
+    a -> setPacketType(PACKET_DATA);
+    b -> setPacketType(PACKET_DATA);
+    c -> setPacketType(PACKET_DATA);
+    d -> setPacketType(PACKET_DATA);
+
+    Channel *e = new Channel("e",1,this);
+    Channel *f = new Channel("f",1,this);
+    Channel *g = new Channel("g",1,this);
+
+    e -> setPacketType(PACKET_CREDIT);
+    f -> setPacketType(PACKET_CREDIT);
+    g -> setPacketType(PACKET_CREDIT);
+
     Source *pkt_src = new Source(a,"pkt_src",this);
     pkt_src->setTypeNondeterministic();
     Queue *tokens = new Queue(f,g,2,"available_tokens",this);
     tokens -> setPacketType(PACKET_CREDIT);
 
-    new Join(a,g,b,"j",this);
+    new Join(g,a,b,"j",this);
 
     Queue *packets = new Queue(b,c,2,"packets",this);
-    new Fork(c,d,e,"f",this);
+    packets->setPacketType(PACKET_DATA);
+
+    new Fork(c,e,d,"f",this);
     Sink *pkt_sink = new Sink(d,"pkt_sink",this);
-    //    (pkt_sink)->setTypeEager();
-    (pkt_sink)->setTypeBounded(10);
+    //(pkt_sink)->setTypeEager();
+    (pkt_sink)->setTypeBounded(4);
     Credit_Counter *cc = new Credit_Counter(e, f, 2, "cc", this);
+    cout << "\nbw2 " << b->data->getWidth() << "\n";
 
   }
 
@@ -715,7 +737,7 @@ int main (int argc, char **argv)
   cout << "\n\n\n======================================================\n";
   g_ckt = new Ckt();
 
-  string network = "ex_queue";
+  string network = "credit_loop";
   string fnameOut = "dump.v";
 
 
@@ -756,6 +778,10 @@ int main (int argc, char **argv)
   // contained within one
   Composite *hier_root = new Composite();
   if      (network == "credit_loop")        {  new Credit_Loop(     "top",hier_root ); } 
+  else if (network == "two_queues")         {  new Two_Queues(      "top",hier_root  ); } 
+  else if (network == "ex_join")            {  new Ex_Join(         "top",hier_root ); } 
+  else if (network == "ex_fork")            {  new Ex_Fork(         "top",hier_root ); } 
+
   else if (network == "ex_tree")            {  new Ex_Tree(         "top",hier_root ); } 
   else if (network == "ex_tree1")           {  new Ex_Tree(         "top",hier_root , 1 ); } 
   else if (network == "ex_tree2")           {  new Ex_Tree(         "top",hier_root , 2 ); } 
@@ -766,7 +792,6 @@ int main (int argc, char **argv)
   else if (network == "ex_tree7")           {  new Ex_Tree(         "top",hier_root , 7 ); } 
   else if (network == "ex_tree8")           {  new Ex_Tree(         "top",hier_root , 8 ); } 
   else if (network == "ex_tree9")           {  new Ex_Tree(         "top",hier_root , 9 ); } 
-  else if (network == "two_queues")         {  new Two_Queues(      "top",hier_root  ); } 
 
   else if (network == "ex_queue")           {  new Ex_Queue(        "top",hier_root , 2 ); } 
   else if (network == "ex_queue2")          {  new Ex_Queue(        "top",hier_root , 2 ); } 
@@ -788,9 +813,9 @@ int main (int argc, char **argv)
   else if (network == "ex_queue_chain7")    {  new Ex_Queue_Chain(  "top",hier_root , 7 ); } 
   else if (network == "ex_queue_chain8")    {  new Ex_Queue_Chain(  "top",hier_root , 8 ); } 
   else if (network == "ex_queue_chain9")    {  new Ex_Queue_Chain(  "top",hier_root , 9 ); } 
-  else if (network == "ex_join")            {  new Ex_Join(         "top",hier_root ); } 
-  else if (network == "ex_fork")            {  new Ex_Fork(         "top",hier_root ); } 
   else {  ASSERT(0);  }
+
+  g_outQos.open("dump.qos");
 
 
   g_network->printNetwork();
@@ -805,6 +830,7 @@ int main (int argc, char **argv)
   //g_ckt -> dumpAsUclid( fnameOut );     
 
   cout << "ending main.cpp normally\n";
+  g_outQos.close();
 
   return 0;
 };
