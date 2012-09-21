@@ -79,6 +79,9 @@ Expr * BvsubExprModM (Expr *a, Expr *b , unsigned int maxval, string name);
 Signal * intervalMonitor( Expr * a, Expr * b, unsigned int t, string name);
 void aImpliesBoundedFutureB( Expr * a, Expr * b, unsigned int t, string name);
 
+string validTimeOrDash (unsigned int n);
+
+
 
 
 
@@ -194,9 +197,6 @@ class Ckt {
 
   // the only input to ckt. All oracle signals are extracted from this.
   Oracle_Signal *oracleBus;
-
-  // width of clk, computed to fit max latency
-  unsigned int wClk; 
  
   Ckt() { 
     voptions = new Verification_Settings();

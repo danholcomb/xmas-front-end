@@ -33,7 +33,6 @@ void Channel::Init(string n, unsigned int w, Hier_Object *p) {
 
   dBits = make_pair(w-1 , 0); //msb is first
     
-  //    setDataWidth(w); 
   initiator = NULL;
   target = NULL;
   assertIrdyPersistant = true;
@@ -42,9 +41,9 @@ void Channel::Init(string n, unsigned int w, Hier_Object *p) {
   (*g_network).channels.push_back(this);
 }
 
-void Channel::widenForTimestamp( unsigned int wClk) {
+void Channel::widenForTimestamp( unsigned int w) {
   unsigned int wOrig = data->getWidth();
-  unsigned int wNew = wOrig + wClk;
+  unsigned int wNew = wOrig + w;
   tBits = make_pair(wNew-1 , wOrig); //msb is first
   data -> setWidth(wNew);
   cout << "widened " << data->getName() << " to width = " << data->getWidth() << "\n";
@@ -146,16 +145,16 @@ Channel_Qos::Channel_Qos(Channel *c) {
 void Channel_Qos::printChannelQos (ostream &f) {
   //  f << "channel: "                 << setw(24) << left << ch->name;
   f << printHeader(); 
-  f << setw(25) << right << "  timeToSinkBound: "         << setw(3) << right << timeToSinkBound ;
-  f << right << "  ageBound: "                << setw(3) << right << ageBound ;
+  f << setw(25) << right << "  timeToSinkBound: "         << setw(3) << right << validTimeOrDash(timeToSinkBound) ;
+  f << right << "  ageBound: "                << setw(3) << right << validTimeOrDash(ageBound) ;
   f << "\n" ;
   f << setw(36) << right << "  targetBound (response): " ;  
-  f << setw(3) << right << targetBound ;
-  f << " ("     << setw(3) << right << targetResponseBound << ")" ;
+  f << setw(3) << right << validTimeOrDash(targetBound) ;
+  f << " ("     << setw(3) << right << validTimeOrDash(targetResponseBound) << ")" ;
   f << "\n";
   f << setw(36) << right << " initiatorBound (repsonse): " ;
-  f << setw(3) << right << initiatorBound ;
-  f << " ("  << setw(3) << right << initiatorResponseBound << ")";
+  f << setw(3) << right << validTimeOrDash(initiatorBound) ;
+  f << " ("  << setw(3) << right << validTimeOrDash(initiatorResponseBound) << ")";
   f << "\n";
 }
 

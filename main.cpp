@@ -42,6 +42,11 @@ unsigned int numBitsRequired( unsigned int maxval) {
 }
 
 
+string validTimeOrDash (unsigned int n) {
+  return (n == T_PROP_NULL) ? "-" : itos(n); 
+}
+
+
 
 //root not has no name... (to help keep flat names shorter)
 Hier_Object::Hier_Object( ) {
@@ -158,9 +163,9 @@ void Ckt::buildNetworkLogic(Network *n) {
   if (voptions->hasTMax()) 
     maxLatency = max(maxLatency, voptions->getTMax() );
 
-  wClk = numBitsRequired( maxLatency );
+  unsigned int wClk = numBitsRequired( maxLatency );
       
-  cout << "\nglobal latency bound (tMax) is          " << voptions->getTMax() << "\n";
+  cout << "\nglobal latency bound (tMax) is        " << voptions->getTMax() << "\n";
   cout << "largest time from latency lemmas is     " << maxLatency << "\n";
   cout << "clock will use                          " << wClk << " bits\n\n";
 
@@ -174,7 +179,7 @@ void Ckt::buildNetworkLogic(Network *n) {
   tCurrentNxt->setWidth(wClk);
 
   tCurrent 
-    -> setResetExpr( (new Bvconst_Expr(0,wClk ))->setWidth(wClk) )
+    -> setResetExpr( new Bvconst_Expr(0,wClk ) )
     -> setNxtExpr( tCurrentNxt );
 
   Expr *e = ( new Bvadd_Expr( tCurrent , new Bvconst_Expr(1,wClk) )) 
@@ -502,7 +507,7 @@ public:
 	 
     new Fork(a,out,c,"f1",this);
     Queue *oc = new Queue(c,d,depth,"outstanding_credits",this);
-    oc->setType(PACKET_CREDIT);
+    oc->setPacketType(PACKET_CREDIT);
     new Join(d,in,b,"j1",this);        
 
   }
@@ -522,8 +527,9 @@ public:
     Channel *g = new Channel("g",10,this);
                 
     Source *pkt_src = new Source(a,"pkt_src",this);
+    pkt_src->setTypeNondeterministic();
     Queue *tokens = new Queue(f,g,2,"available_tokens",this);
-    tokens -> setType(PACKET_CREDIT);
+    tokens -> setPacketType(PACKET_CREDIT);
 
     new Join(a,g,b,"j",this);
 

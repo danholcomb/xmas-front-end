@@ -207,14 +207,13 @@ void Queue::buildPrimitiveLogic ( ) {
   unsigned int wDepth = numBitsRequired(physicalDepth); 
   //  unsigned int wPacket = i->channel->getDataWidth();
   unsigned int wPacket = i->channel->data->getWidth();
+  unsigned int wTimestamp = g_ckt->tCurrent->getWidth();
   pair <unsigned int,unsigned int> tBits; //which bits hold timestamp
   
 
   if (getPacketType() == PACKET_DATA)
     {
       tBits = i->channel->getTBits();
-      //       wPacket += g_ckt->wClk; 
-      //       tBits = make_pair(wPacket-1, i->channel->getDataWidth()); //msb is first
     } 
 
   
@@ -441,7 +440,8 @@ void Queue::buildPrimitiveLogic ( ) {
 	    -> setName(name+"qSlot"+itos(i)+"Timestamp")
 	    -> setExpr( new Extract_Expr(qslots[i], tBits.first, tBits.second));
 	  
-	  double maxval = pow(double(2),double(g_ckt->wClk))-1;
+	  //	  double maxval = pow(double(2),double(g_ckt->weClk))-1;
+	  double maxval = pow(double(2),double(wTimestamp))-1;
 
 	  Signal *agex  = (new Signal(name+"ageIfValid"))
 	    -> setExpr( 
@@ -456,9 +456,9 @@ void Queue::buildPrimitiveLogic ( ) {
 	  age[i] = (new Signal())
 	    -> setName(name+"qslot"+itos(i)+"_age")
 	    -> setExpr( (new Case_Expr())
-			-> setDefault( new Bvconst_Expr(0,g_ckt->wClk) )
+			-> setDefault( new Bvconst_Expr(0, wTimestamp ) )
 			-> addCase( hasData, agex)
-			-> setWidth(g_ckt->wClk)
+			-> setWidth(wTimestamp)
 			);
 
 	}
@@ -471,7 +471,7 @@ void Queue::buildPrimitiveLogic ( ) {
 	  
 		Signal *age_bound = (new Signal())
 		  -> setName( name+"qslot"+itos(i)+"phiLAgeBound")
-		  -> setExpr( (new Bvconst_Expr(slotQos[i]->getMaxAge() + 1)) -> setWidth(g_ckt->wClk) );
+		  -> setExpr( (new Bvconst_Expr(slotQos[i]->getMaxAge() + 1)) -> setWidth(wTimestamp) );
 	  
 		Signal *age_valid = (new Signal())
 		  -> setName( name+"qslot"+itos(i)+"phiLValid" )
@@ -489,7 +489,7 @@ void Queue::buildPrimitiveLogic ( ) {
 
 		Signal *age_bound = (new Signal())
 		  -> setName(name+"qslot"+itos(i)+"phiGAgebound")
-		  -> setExpr( (new Bvconst_Expr( g_ckt->voptions->getTMax())) -> setWidth(g_ckt->wClk) );
+		  -> setExpr( (new Bvconst_Expr( g_ckt->voptions->getTMax())) -> setWidth(wTimestamp) );
 
 		Signal *age_valid = (new Signal())
 		  -> setName( name+"qslot"+itos(i)+"phiGValid" )
@@ -943,8 +943,7 @@ void Source::buildPrimitiveLogic ( ) {
   //determine the bitwidths to use
   unsigned int wData = o->channel->data->getWidth();
   unsigned int wOracle = o->channel->getDWidth();
-  //cout << "wData: " << wData << " wOracle: " << wOracle << "\n";
-  ASSERT(wOracle + g_ckt->wClk == wData);
+  ASSERT(wOracle + g_ckt->tCurrent->getWidth() == wData);
 
   unsigned int lsb = g_ckt->oracleBus->getWidth();
   unsigned msb = lsb + wOracle - 1;
@@ -1014,8 +1013,8 @@ Slot_Qos::Slot_Qos(unsigned int i, Queue *q) {
 
 void Slot_Qos::printSlotQos(ostream &f) {
   f    << printHeader() 
-       << "  timeToSinkBound: " << setw(3)  << right << getTimeToSink()
-       << "  ageBound: "        << setw(3)  << right << getMaxAge()
+       << "  timeToSinkBound: " << setw(3)  << right << validTimeOrDash(getTimeToSink())
+       << "  ageBound: "        << setw(3)  << right << validTimeOrDash(getMaxAge())
        << "\n"; 
 }
 

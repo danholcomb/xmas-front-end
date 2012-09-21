@@ -4,7 +4,7 @@
 
 class Channel_Qos;
 
-/*! \brief connection between two xmas components.*/
+/*! \brief connection between ports of two xmas components.*/
 class Channel : public Hier_Object {
   unsigned int width;
   PacketType type;
@@ -28,7 +28,7 @@ public:
 
   void Init(string n, unsigned int w, Hier_Object *p);
 
-  void widenForTimestamp( unsigned int wClk);
+  void widenForTimestamp( unsigned int w);
 
   pair <unsigned int,unsigned int> getTBits () {return tBits;}
   pair <unsigned int,unsigned int> getDBits () {return dBits;}
