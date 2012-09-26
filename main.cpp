@@ -142,7 +142,8 @@ void Ckt::buildNetworkLogic(Network *n) {
   unsigned int maxLatency = 0;
   for (vector <Queue*>::iterator it = n->queues.begin(); it != n->queues.end(); it++ ) 
     for (int i = (*it)->qslots.size()-1 ; i >= 0 ; i--) 
-      maxLatency = max(maxLatency, (*it)->slotQos[i]->getMaxAge() ); 
+      if ((*it)->slotQos[i]->hasMaxAge())
+	maxLatency = max(maxLatency, (*it)->slotQos[i]->getMaxAge() ); 
 
 
   if (g_ckt->voptions->isEnabledPhiLQueue and not g_ckt->voptions->isEnabledPhiGQueue)
