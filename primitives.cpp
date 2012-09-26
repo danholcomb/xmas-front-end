@@ -229,9 +229,11 @@ void Queue::buildPrimitiveLogic ( ) {
     
   Signal *nxt_numItems = (new Signal(name+"nxt_numItems"));
 
-  numItems = (new Seq_Signal(name+"numItems"))
-    -> setResetExpr( (new Bvconst_Expr(0))->setWidth(wDepth) )
+  this->numItems 
+    -> setResetExpr( new Bvconst_Expr(0,wDepth) )
     -> setNxtExpr( nxt_numItems );
+
+
 
   Signal *numItemsPlus1 = (new Signal(name+"numItemsPlus1"))
     -> setExpr( new Bvadd_Expr( wDepth, numItems, new Bvconst_Expr(1,wDepth))); 
@@ -523,6 +525,9 @@ Queue::Queue(Channel *in, Channel *out, unsigned int d, const string n, Hier_Obj
   ASSERT (d >= 1); 
   depth = d;
   numItemsMax = depth;
+  
+  numItems = new Seq_Signal(name+"numItems");
+  numItems ->setWidth(numBitsRequired(depth));
 
   for (int i = 0; i<depth; i++) 
     slotQos.push_back (new Slot_Qos(i,this) );
@@ -531,6 +536,7 @@ Queue::Queue(Channel *in, Channel *out, unsigned int d, const string n, Hier_Obj
   (*g_network).primitives.push_back(this);
   (*g_network).queues.push_back(this);
   // try switching to one-hot encoding for numItems?
+
 }
 
 

@@ -41,7 +41,7 @@ unsigned int numBitsRequired( unsigned int maxval) {
   return w;
 }
 
-
+// for printing
 string validTimeOrDash (unsigned int n) {
   return (n == T_PROP_NULL) ? "-" : itos(n); 
 }
@@ -85,13 +85,12 @@ Targ_Port::Targ_Port(string n, Channel *c, Primitive *p) : Port(n, c, p) {
 
 
 
-// a counter that asserts an outputs if t cycles elapse between a and b.
+// a counter that asserts an output if t cycles elapse between a and b.
 // used for enforcing bounds on sources and sinks, and for checking
 // channel bounds.
 
 Signal * intervalMonitor( Expr * a, Expr * b, unsigned int t, string name) {
 
-  //  unsigned int w = numBitsRequired(t); 
   unsigned int w = numBitsRequired(t+1); 
   Signal *cntPlus1 = (new Signal(name+"cntPlus1"))->setWidth(w);
 
@@ -479,6 +478,57 @@ void Network::printNetwork () {
 
 
 
+// void Numeric_Invariant ( Signal  ) {
+
+//   unsigned int w = o->channel->data->getWidth();
+
+//   ASSERT2 (a->channel->getPacketType() == PACKET_CREDIT, "join must be restricted join");
+//   // second input can be a second credit token or else data packet
+//   //ASSERT (w == a->channel->data->getWidth() );
+//   ASSERT (w == b->channel->data->getWidth() );
+
+//   //     unsigned int w = o->channel->getDataWidth();
+//   //     ASSERT (w == a->channel->getDataWidth() );
+//   //     ASSERT (w == b->channel->getDataWidth() );
+
+//   Signal *a_irdy = (new Signal(name+"a_irdy"))->setWidth(1);
+//   Signal *a_data = (new Signal(name+"a_data"))->setWidth(1);
+//   Signal *a_trdy = (new Signal(name+"a_trdy"))->setWidth(1);
+    
+//   //   ASSERT(1 == a->channel->irdy->getWidth());
+//   //   ASSERT(w == a->channel->data->getWidth());
+//   //   ASSERT(1 == a->channel->trdy->getWidth());
+
+//   a_irdy            -> setExpr( new Id_Expr( a->channel->irdy ) );
+//   a_data            -> setExpr( new Id_Expr( a->channel->data ) );
+//   a->channel->trdy  -> setExpr( new Id_Expr( a_trdy           ) );
+
+//   Signal *b_irdy = new Signal(name+"b_irdy");
+//   Signal *b_data = new Signal(name+"b_data");
+//   Signal *b_trdy = new Signal(name+"b_trdy");
+    
+//   b_irdy            -> setExpr( new Id_Expr( b->channel->irdy ) );
+//   b_data            -> setExpr( new Id_Expr( b->channel->data ) );
+    
+//   Signal *o_irdy = new Signal(name+"o_irdy");
+//   Signal *o_data = new Signal(name+"o_data");
+//   Signal *o_trdy = new Signal(name+"o_trdy");
+
+//   o_trdy             -> setExpr( new Id_Expr( o->channel->trdy ) );
+
+
+//   // the logic for the join:
+//   o_data       -> setExpr ( new Id_Expr( b_data) );
+//   o_irdy       -> setExpr ( new And_Expr( a_irdy , b_irdy) );
+//   a_trdy       -> setExpr ( new And_Expr( o_trdy , b_irdy) );
+//   b_trdy       -> setExpr ( new And_Expr( o_trdy , a_irdy) );    		    
+
+//   b->channel->trdy  -> setExpr( new Id_Expr( b_trdy           ) );
+//   o->channel->data   -> setExpr( new Id_Expr( o_data           ) );
+//   o->channel->irdy   -> setExpr( new Id_Expr( o_irdy           ) );
+        
+//   return;
+// }
 
 
 
@@ -496,6 +546,7 @@ void Network::printNetwork () {
 class Credit_Counter : public Composite {
 public:
   unsigned int depth;
+  Queue *oc; //available outside of construct for use in numeric invariants
 
   Credit_Counter(Channel *in, Channel *out, unsigned int de, string n, Hier_Object *p) :  Composite(n,p) {
 
@@ -516,17 +567,15 @@ public:
     (token_sink)->setTypeEager();
 	 
     new Fork(a,out,c,"f1",this);
-    Queue *oc = new Queue(c,d,depth,"outstanding_credits",this);
+    oc = new Queue(c,d,depth,"outstanding_credits",this);
     oc->setPacketType(PACKET_CREDIT);
     new Join(d,in,b,"j1",this);        
-
   }
-
 };
 
 class Credit_Loop : public Composite {
 public:
-  Credit_Loop(string n, Hier_Object *p) : Composite(n,p) {
+  Credit_Loop(string n, Hier_Object *p, bool useNumInv = false) : Composite(n,p) {
  
     Channel *a = new Channel("a",2,this);
     Channel *b = new Channel("b",2,this);
@@ -558,12 +607,20 @@ public:
     new Fork(c,e,d,"f",this);
     Sink *pkt_sink = new Sink(d,"pkt_sink",this);
     //(pkt_sink)->setTypeEager();
-    (pkt_sink)->setTypeBounded(4);
+    (pkt_sink)->setTypeBounded(2);
     Credit_Counter *cc = new Credit_Counter(e, f, 2, "cc", this);
-    cout << "\nbw2 " << b->data->getWidth() << "\n";
 
+    // numeric invariant for credit loop -- Chatterjee et al CAV'10
+    if (useNumInv) 
+      {
+	Signal *numInv = new Signal();
+	numInv->setName("creditLoopNumInv");
+	ASSERT(packets->numItems->getWidth() == tokens->numItems->getWidth());
+	Expr *pktsPlusTokens = (new Bvadd_Expr(packets->numItems, tokens->numItems)) -> setWidth(packets->numItems->getWidth() );
+	numInv->setExpr( new Eq_Expr(pktsPlusTokens, cc->oc->numItems));
+	numInv->assertSignalTrue();
+      }
   }
-
 };
 
 
@@ -778,7 +835,8 @@ int main (int argc, char **argv)
   // contained within one
   Composite *hier_root = new Composite();
   if      (network == "credit_loop")        {  new Credit_Loop(     "top",hier_root ); } 
-  else if (network == "two_queues")         {  new Two_Queues(      "top",hier_root  ); } 
+  else if (network == "credit_loop_numinv") {  new Credit_Loop(     "top",hier_root , true ); } 
+  else if (network == "two_queues")         {  new Two_Queues(      "top",hier_root ); } 
   else if (network == "ex_join")            {  new Ex_Join(         "top",hier_root ); } 
   else if (network == "ex_fork")            {  new Ex_Fork(         "top",hier_root ); } 
 

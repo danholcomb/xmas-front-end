@@ -29,7 +29,7 @@ class Queue : public Primitive {
  public:
   Targ_Port *i;
   Init_Port *o;
-  Signal *numItems;
+  Seq_Signal *numItems;
   unsigned int numItemsMax;
   vector <Slot_Qos*> slotQos;
   vector <Signal*> qslots;
