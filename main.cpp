@@ -577,7 +577,8 @@ public:
 class Credit_Loop : public Composite {
 public:
   Credit_Loop(string n, Hier_Object *p, bool useNumInv = false) : Composite(n,p) {
- 
+    unsigned int qSize = 4;
+
     Channel *a = new Channel("a",2,this);
     Channel *b = new Channel("b",2,this);
     Channel *c = new Channel("c",2,this);
@@ -597,19 +598,19 @@ public:
 
     Source *pkt_src = new Source(a,"pkt_src",this);
     pkt_src->setTypeNondeterministic();
-    Queue *tokens = new Queue(f,g,2,"available_tokens",this);
+    Queue *tokens = new Queue(f,g,qSize,"available_tokens",this);
     tokens -> setPacketType(PACKET_CREDIT);
 
     new Join(g,a,b,"j",this);
 
-    Queue *packets = new Queue(b,c,2,"packets",this);
+    Queue *packets = new Queue(b,c,qSize,"packets",this);
     packets->setPacketType(PACKET_DATA);
 
     new Fork(c,e,d,"f",this);
     Sink *pkt_sink = new Sink(d,"pkt_sink",this);
     //(pkt_sink)->setTypeEager();
-    (pkt_sink)->setTypeBounded(2);
-    Credit_Counter *cc = new Credit_Counter(e, f, 2, "cc", this);
+    (pkt_sink)->setTypeBounded(3);
+    Credit_Counter *cc = new Credit_Counter(e, f, qSize, "cc", this);
 
     // numeric invariant for credit loop -- Chatterjee et al CAV'10
     if (useNumInv) 
