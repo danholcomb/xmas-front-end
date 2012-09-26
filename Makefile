@@ -29,7 +29,7 @@ $(TARGET).aig: $(TARGET).v
 	v2aig.sh $(TARGET).v
 
 $(TARGET).out: $(SRC)
-	clang++ main.cpp expressions.cpp primitives.cpp channel.cpp -ferror-limit=10 -Wall -o $(TARGET).out
+	clang++ main.cpp expressions.cpp primitives.cpp channel.cpp -ferror-limit=10 -Wall -Wno-unused-variable -o $(TARGET).out
 
 $(TARGET).vcd: $(SRC) $(TARGET).v tb_rand.v
 	iverilog -Wall -Winfloop -o dump.iv -D SIMULATION_ONLY dump.v tb_rand.v
