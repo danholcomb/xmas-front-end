@@ -12,10 +12,12 @@ use Getopt::Long;
 my $Network = "ex_queue";
 my $Timeout = 20;
 my $Log_Dir = "log";
+my $T_Max = -1;
 GetOptions (
 	    "network=s"    => \$Network, 
 	    "log_dir=s"    => \$Log_Dir, 
 	    "timeout=i"    => \$Timeout, 
+	    "t_max=i"      => \$T_Max, 
 	   ) or print "ERROR: bad input options"; 
 
 print "\n";
@@ -24,6 +26,7 @@ print "| ",$0,"\n";
 print "| ","log_dir:              $Log_Dir\n";
 print "| ","network:              $Network\n";
 print "| ","timeout:              $Timeout\n";
+print "| ","t_max:                $T_Max\n";
 print "="x70; 
 print "\n";
 
@@ -31,41 +34,61 @@ print "\n";
 my $Timestamp = `date`;
 my $Experiments = ();
 
-# each experiment is one row of the table
-push (@$Experiments, { "ENGINE" => "pdr" ,        
-		       "PROP_DEF" => " --enable_phig",
-		       "PROP_STRING" => '$\Phi^G$' });
+#or ($Network eq "credit_loop_numinv")
+if (($Network eq "credit_loop")) {
+     push (@$Experiments, { "ENGINE" => "pdr" ,        
+			    "PROP_DEF" => " --enable_phig --enable_persistance --enable_psi --t_max $T_Max",
+			    "PROP_STRING" => '$\Phi^G$ \wedge \Psi' });
 
-push (@$Experiments, { "ENGINE" => "pdr" ,        
-		       "PROP_DEF" => " --enable_phig --enable_psi",
-		       "PROP_STRING" => '$\Psi \wedge \Phi^G$' });
+     push (@$Experiments, { "ENGINE" => "pdr" ,        
+			    "PROP_DEF" => " --enable_phig --enable_persistance --enable_psi --enable_num_inv --t_max $T_Max",
+			    "PROP_STRING" => '$\Phi^G \wedge \Psi \wedge Num$' });
 
-push (@$Experiments, { "ENGINE" => "pdr" ,        
-		       "PROP_DEF" => " --enable_lemmas --enable_phig --enable_psi",
-		       "PROP_STRING" => '$\Phi^L \wedge \Psi \wedge \Phi^G$' });
+     push (@$Experiments, { "ENGINE" => "kind" ,        
+			    "PROP_DEF" => " --enable_phig --enable_persistance --enable_psi --t_max $T_Max",
+			    "PROP_STRING" => '$\Phi^G \wedge \Psi$' });
 
-push (@$Experiments, { "ENGINE" => "pdr" ,        
-		       "PROP_DEF" => " --enable_lemmas --enable_phig --enable_psi --enable_bound_channel --enable_response_bound_channel",
-		       "PROP_STRING" => '$\Phi^L \wedge \Psi \wedge \Phi^G$ \wedge Channel' });
+     push (@$Experiments, { "ENGINE" => "kind" ,        
+			    "PROP_DEF" => " --enable_phig --enable_persistance --enable_psi --enable_num_inv --t_max $T_Max",
+			    "PROP_STRING" => '$\Phi^G \wedge \Psi \wedge Num$' });
+
+} else {
+     # these settings assume that propagation succeeds, and will cause problems otherwise
+     # each experiment is one row of the table
+     push (@$Experiments, { "ENGINE" => "pdr" ,        
+			    "PROP_DEF" => " --enable_phig",
+			    "PROP_STRING" => '$\Phi^G$' });
+
+     push (@$Experiments, { "ENGINE" => "pdr" ,        
+			    "PROP_DEF" => " --enable_phig --enable_psi",
+			    "PROP_STRING" => '$\Psi \wedge \Phi^G$' });
+
+     push (@$Experiments, { "ENGINE" => "pdr" ,        
+			    "PROP_DEF" => " --enable_lemmas --enable_phig --enable_psi",
+			    "PROP_STRING" => '$\Phi^L \wedge \Psi \wedge \Phi^G$' });
+
+     push (@$Experiments, { "ENGINE" => "pdr" ,        
+			    "PROP_DEF" => " --enable_lemmas --enable_phig --enable_psi --enable_bound_channel --enable_response_bound_channel",
+			    "PROP_STRING" => '$\Phi^L \wedge \Psi \wedge \Phi^G$ \wedge Channel' });
 
 
-# push (@$Experiments, { "ENGINE" => "kind" ,        
-# 		       "PROP_DEF" => " --enable_phig",
-# 		       "PROP_STRING" => '$\Phi^G$' });
+     # push (@$Experiments, { "ENGINE" => "kind" ,        
+     # 		       "PROP_DEF" => " --enable_phig",
+     # 		       "PROP_STRING" => '$\Phi^G$' });
 
-push (@$Experiments, { "ENGINE" => "kind" ,        
-		       "PROP_DEF" => " --enable_psi --enable_phig",
-		       "PROP_STRING" => '$\Psi \wedge \Phi^G$' });
+     push (@$Experiments, { "ENGINE" => "kind" ,        
+			    "PROP_DEF" => " --enable_psi --enable_phig",
+			    "PROP_STRING" => '$\Psi \wedge \Phi^G$' });
 
-push (@$Experiments, { "ENGINE" => "kind" ,        
-		       "PROP_DEF" => " --enable_lemmas --enable_phig --enable_psi",
-		       "PROP_STRING" => '$\Phi^L \wedge \Psi \wedge \Phi^G$' });
+     push (@$Experiments, { "ENGINE" => "kind" ,        
+			    "PROP_DEF" => " --enable_lemmas --enable_phig --enable_psi",
+			    "PROP_STRING" => '$\Phi^L \wedge \Psi \wedge \Phi^G$' });
 
-push (@$Experiments, { "ENGINE" => "kind" ,        
-		       "PROP_DEF" => " --enable_lemmas --enable_phig --enable_psi --enable_bound_channel --enable_response_bound_channel",
-		       "PROP_STRING" => '$\Phi^L \wedge \Psi \wedge \Phi^G$ \wedge Channel' });
+     push (@$Experiments, { "ENGINE" => "kind" ,        
+			    "PROP_DEF" => " --enable_lemmas --enable_phig --enable_psi --enable_bound_channel --enable_response_bound_channel",
+			    "PROP_STRING" => '$\Phi^L \wedge \Psi \wedge \Phi^G$ \wedge Channel' });
 
-
+}
 print Dumper($Experiments);
 
 
@@ -88,10 +111,10 @@ foreach my $i (0..$#{$Experiments}) {
      }
      $r->{ENGINE} = "$engine";
      $r->{PROP_STRING} = "$prop_string";
+     $r->{PROP_DEF} = "$prop_def";
      $r->{PROVED} = ($r->{VALID} == 1) ? "Y" : "-";
 
-     my $foo = $Network;
-     my $log_file_name = 'compare_engines__'.$foo.'_'.$i.'' ;
+     my $log_file_name = 'compare_engines__'.$Network.'_'.$i.'' ;
      $r->{LOG_FILE_NAME} = $log_file_name;
 
      push (@$R,$r);
@@ -100,10 +123,13 @@ foreach my $i (0..$#{$Experiments}) {
      writeFile("current_results.txt",print_table($R)); # just to check on progress
      appendFile("current_results.txt",Dumper($R));
 
-     system('mkdir '.$log_file_name.'');
-     system('cp dump.abc dump.aig dump.v current_results.txt '.$log_file_name.'/');
-     system('tar -czf log/'.$log_file_name.'.tar.gz '.$log_file_name.'/');
+     #system('mkdir -p '.$Log_Dir."/".$log_file_name.'');
+     system('mkdir -p '.$log_file_name.'');
+     system('cp abc.rc dump.abc dump.aig dump.v current_results.txt '.$log_file_name.'/');
+     #     system('tar -czf '.$Log_Dir.'/'.$log_file_name.'.tar.gz '.$log_file_name.'/');
+     system('tar -czf '.$Log_Dir.'/'.$log_file_name.'.tar.gz '.$log_file_name.'/');
      system('rm -r '.$log_file_name.'');
+     #croak;
 }
 
 appendFile("exp_results.txt",print_table($R));
@@ -118,7 +144,7 @@ sub print_table {
      my $r = shift;
      print Dumper($r);
 
-     my $t = "% \n";
+     my $t = "\n% \n";
      $t .= "% ".$0."\n";
      $t .= "% ".$Network."\n";
      $t .= "% ".$Timestamp;
