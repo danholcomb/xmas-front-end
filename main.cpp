@@ -146,7 +146,7 @@ void Ckt::buildNetworkLogic(Network *n) {
 	maxLatency = max(maxLatency, (*it)->slotQos[i]->getMaxAge() ); 
 
 
-  if (g_ckt->voptions->isEnabledPhiLQueue and not g_ckt->voptions->isEnabledPhiGQueue)
+  if ((maxLatency >0) and g_ckt->voptions->isEnabledPhiLQueue and not g_ckt->voptions->isEnabledPhiGQueue)
     {
       cout << "no global tMax was entered, using " << maxLatency << "\n";
       voptions->setTMax(maxLatency); 

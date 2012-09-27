@@ -2,6 +2,8 @@
 #define EXPRESSIONS_H
 
 
+#include "main.h"
+
 
 class Expr {
   unsigned int width;
@@ -29,43 +31,11 @@ class Case_Expr : public Expr {
   Expr *defaultCase;
   vector < pair<Expr*,Expr*> > cases;
  public:
-
  Case_Expr(unsigned int w) : Expr(w) {;}
  Case_Expr() : Expr() {;}
-  
-  Case_Expr * setDefault( Expr *r ) {
-    defaultCase = r;
-    setWidth( r->getWidth() );
-    return this;
-  };
-  
-  Case_Expr * addCase( Expr *cond, Expr *val ) {
-    ASSERT2(defaultCase->getWidth() > 0, "must set default expr before case");
-    ASSERT2(defaultCase->getWidth() == val->getWidth(), "width mismatch");
-    pair <Expr*,Expr*> p = make_pair(cond,val);
-    cases.push_back(p);
-    return this;
-  };
-
-  string printExprVerilog() {
-    ASSERT(cases.size() > 0);
-    ASSERT2(defaultCase!=0, "cant add case without default val first");
-    ASSERT2((getWidth()>0), "illegal expression width="+getWidth());
-
-    stringstream out;
-    for (vector < pair<Expr*,Expr*> >::iterator c = cases.begin(); c != cases.end();  c++ ) {
-      ASSERT( c->first->getWidth() == 1);
-      ASSERT( c->second->getWidth() == getWidth());
-      ASSERT( defaultCase->getWidth() == getWidth());
-      
-      out << "\n\t" << c->first->printExprVerilog()
-	  << " ? " << c->second->printExprVerilog() << " : ";
-
-    }
-    out << defaultCase->printExprVerilog() << "";
-    return out.str();
-  };
-
+  Case_Expr * setDefault( Expr *r );
+  Case_Expr * addCase( Expr *cond, Expr *val );
+  string printExprVerilog();
 };
 
 
@@ -76,65 +46,31 @@ class Case_Expr : public Expr {
 class Lt_Expr : public Expr {
   Expr *_a, *_b;
  public:
-  
- Lt_Expr( Expr *a, Expr *b) : Expr(1) {
-    ASSERT(a->getWidth() == b->getWidth());
-    _a = a;
-    _b = b;
-  }
-
-
-  string printExprVerilog() {
-    ASSERT2((getWidth()==1), "illegal expression width="+getWidth());
-    stringstream out;
-    out << "(" << _a->printExprVerilog() << " < "<< _b->printExprVerilog() << ")";
-    return out.str();
-  };
+  Lt_Expr( Expr *a, Expr *b);
+  string printExprVerilog();
 };
 
-class Lte_Expr : public Expr {
-  Expr *_a;
-  Expr *_b;
- public:
- Lte_Expr( Expr *a, Expr *b) : Expr(1) {
-    ASSERT(a->getWidth() == b->getWidth());
-    _a = a;
-    _b = b;
-  }
 
-  string printExprVerilog() {
-    ASSERT2((getWidth()==1), "illegal expression width="+getWidth());
-    stringstream out;
-    out << "(" << _a->printExprVerilog() << " <= "<< _b->printExprVerilog() << ")";
-    return out.str();
-  };
+class Lte_Expr : public Expr {
+  Expr *_a, *_b;
+ public:
+  Lte_Expr( Expr *a, Expr *b);
+  string printExprVerilog();
 };
 
 class And_Expr : public Expr {
   vector <Expr*> _ins;
  public:
  And_Expr( )                : Expr(1) {;}
- And_Expr(Expr *a, Expr *b) : Expr(1) {
+  And_Expr(Expr *a, Expr *b) : Expr(1) {
     addInput(a);
     addInput(b);
   }
-  
-  And_Expr * addInput (Expr *in){
+  And_Expr * addInput (Expr *in) {
     _ins.push_back(in);
     return this;
   }
-
-  string printExprVerilog() {
-    ASSERT(_ins.size() > 0);
-    ASSERT2((getWidth()==1), "illegal expression width="+getWidth());
-    stringstream out;
-    vector<Expr*>::const_iterator i = _ins.begin();
-    out << "(" << (*i)->printExprVerilog();
-    for ( i++; i != _ins.end(); i++ )
-      out << " & " << (*i)->printExprVerilog(); 
-    out << ")";
-    return out.str();
-  };
+  string printExprVerilog();
 };
 
 
@@ -148,27 +84,15 @@ class Or_Expr : public Expr {
     addInput(b);
   }
  Or_Expr(Expr *a, Expr *b, Expr *c) : Expr(1) {
-    addInput(a);
-    addInput(b);
+    addInput(a);    
+    addInput(b);    
     addInput(c);
   }
-
-
   Or_Expr * addInput (Expr *in){
     _ins.push_back(in);
     return this;
   }
-
-  string printExprVerilog() {
-    ASSERT(_ins.size() > 0);
-    stringstream out;
-    vector<Expr*>::const_iterator i = _ins.begin();
-    out << "(" << (*i)->printExprVerilog();
-    for ( i++; i != _ins.end(); i++ )
-      out << " | " << (*i)->printExprVerilog(); 
-    out << ")";
-    return out.str();
-  };
+  string printExprVerilog();
 };
 
 
@@ -181,7 +105,6 @@ class Eq_Expr : public Expr {
     a = ea;
     b = eb;
   }
-
   string printExprVerilog() {
     stringstream out;
     out << " (" << a->printExprVerilog() << " == "<< b->printExprVerilog() << ") ";
