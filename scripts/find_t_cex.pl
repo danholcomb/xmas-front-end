@@ -117,7 +117,7 @@ appendFile("exp_results.txt",print_table($R));
 
 #print Dumper($R);
 print "exiting normally\n";
-exit;
+exit($t_cex+1);
 
 
 
