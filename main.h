@@ -125,6 +125,7 @@ class Verification_Settings {
   unsigned int tMax;
  public:
   bool isEnabledPhiLQueue;
+  bool isEnabledNumInv;
   bool isEnabledPhiGQueue;
   bool isEnabledBoundChannel; //irdy or trdy unconditional bounds
   bool isEnabledResponseBoundChannel; //irdy or trdy response bounds
@@ -133,6 +134,7 @@ class Verification_Settings {
 
   Verification_Settings() { 
     tMax = T_PROP_NULL;
+    isEnabledNumInv = false;
     isEnabledPhiLQueue = false;
     isEnabledPhiGQueue = false;
     isEnabledResponseBoundChannel = false;
@@ -141,6 +143,9 @@ class Verification_Settings {
     isEnabledPersistance = false;
   };
 
+
+  void  enableNumInv() { isEnabledNumInv = true;}
+  void disableNumInv() { isEnabledNumInv = false;}
   
 
   void  enableBoundChannel() { isEnabledBoundChannel = true;}
@@ -170,6 +175,7 @@ class Verification_Settings {
     cout 
       << "\n===================================================\n"
       << "voptions:\n"
+      << "\t isEnabledNumInv =                   " << isEnabledNumInv                << "\n"
       << "\t isEnabledPhiLQueue =                " << isEnabledPhiLQueue             << "\n"
       << "\t isEnabledPhiGQueue =                " << isEnabledPhiGQueue             << "\n"
       << "\t isEnabledResponseBoundChannel =     " << isEnabledResponseBoundChannel  << "\n"

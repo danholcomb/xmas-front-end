@@ -576,8 +576,8 @@ public:
 
 class Credit_Loop : public Composite {
 public:
-  Credit_Loop(string n, Hier_Object *p, bool useNumInv = false) : Composite(n,p) {
-    unsigned int qSize = 4;
+  Credit_Loop(string n, Hier_Object *p) : Composite(n,p) {
+    unsigned int qSize = 2;
 
     Channel *a = new Channel("a",2,this);
     Channel *b = new Channel("b",2,this);
@@ -609,11 +609,11 @@ public:
     new Fork(c,e,d,"f",this);
     Sink *pkt_sink = new Sink(d,"pkt_sink",this);
     //(pkt_sink)->setTypeEager();
-    (pkt_sink)->setTypeBounded(3);
+    (pkt_sink)->setTypeBounded(2);
     Credit_Counter *cc = new Credit_Counter(e, f, qSize, "cc", this);
 
     // numeric invariant for credit loop -- Chatterjee et al CAV'10
-    if (useNumInv) 
+    if (g_ckt->voptions->isEnabledNumInv) 
       {
 	Signal *numInv = new Signal();
 	numInv->setName("creditLoopNumInv");
@@ -809,6 +809,8 @@ int main (int argc, char **argv)
       if        ( s == "--dump")    { fnameOut = argv[++i];
       } else if ( s == "--network") { network  = argv[++i];
       } else if ( s == "--t_max")                          { g_ckt->voptions->setTMax( atoi(argv[++i]) );
+      } else if ( s ==  "--enable_num_inv")                { g_ckt->voptions->enableNumInv();
+      } else if ( s == "--disable_num_inv")                { g_ckt->voptions->disableNumInv();
       } else if ( s ==  "--enable_persistance")            { g_ckt->voptions->enablePersistance();
       } else if ( s == "--disable_persistance")            { g_ckt->voptions->disablePersistance();
       } else if ( s ==  "--enable_lemmas")                 { g_ckt->voptions->enablePhiLQueue();
@@ -837,7 +839,6 @@ int main (int argc, char **argv)
   // contained within one
   Composite *hier_root = new Composite();
   if      (network == "credit_loop")        {  new Credit_Loop(     "top",hier_root ); } 
-  else if (network == "credit_loop_numinv") {  new Credit_Loop(     "top",hier_root , true ); } 
   else if (network == "two_queues")         {  new Two_Queues(      "top",hier_root ); } 
   else if (network == "ex_join")            {  new Ex_Join(         "top",hier_root ); } 
   else if (network == "ex_fork")            {  new Ex_Fork(         "top",hier_root ); } 
