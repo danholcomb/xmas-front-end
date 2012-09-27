@@ -471,7 +471,7 @@ void Queue::buildPrimitiveLogic ( ) {
       if (g_ckt->voptions->isEnabledPhiLQueue) 
 	{
 	  for (unsigned int i = 0; i<depth; i++) 
-	    if ( slotQos[i]->isEnabled() )
+	    if ( slotQos[i]->isEnabled() and slotQos[i]->hasMaxAge() )
 	      {
 	  
 		Signal *age_bound = (new Signal())
