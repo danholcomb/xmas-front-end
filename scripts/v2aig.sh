@@ -2,9 +2,6 @@
 
 if [ $# -eq 1 ]; then
     VFILE=$1
-# elif [ $# -eq 2 ]; then
-#     VFILE=$1
-#     VDEFS=$2
 else
     echo $0" has wrong input args: "$*
     exit
@@ -25,9 +22,8 @@ echo ; echo ;
 
 
 MIMA_DIR="/home/holcomb/temp_v2aig"
-MIMA_TCLMAIN="/home/holcomb/lj-veriabc-alpha-bdc4c8c8de34/exe/tclmain"
+MIMA_TCLMAIN="/hd/common/jiang/veriabc-alpha-installation/bin/tclmain"
 
-#echo  "analyze -sysv $VFILE; elaborate; veriabc_analyze -zaiger; veriabc_set_reset .*reset -all -run -phase 1; veriabc_write -zaiger dump.aig" > verific.script
 echo  "analyze -sysv $VFILE; elaborate; veriabc_analyze -zaiger; veriabc_set_reset .*reset -all -run -phase 1; veriabc_write -zaiger dump.aig" > verific.script
 
 scp $VFILE verific.script holcomb@mima.eecs.berkeley.edu:$MIMA_DIR/
