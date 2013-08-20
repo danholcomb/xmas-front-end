@@ -2,108 +2,66 @@
 #define CHANNEL_H
 
 
-class Channel_Qos;
+class Hier_Object;
+
 
 /*! \brief connection between ports of two xmas components.*/
 class Channel : public Hier_Object {
-  unsigned int width;
-  PacketType type;
-  bool assertIrdyPersistant;
-  bool assertTrdyPersistant;
-  pair <unsigned int,unsigned int> tBits; //which bits hold timestamp if type is pkt
-  pair <unsigned int,unsigned int> dBits; //which bits hold data
+    unsigned int width;
+    PacketType type;
+    bool specifyIrdyPersistant;
+    bool specifyTrdyPersistant;
+    bool specifyNonBlocking;
+
+    bool breakCycleTrdy;
+    pair <unsigned int,unsigned int> tBits; //which bits hold timestamp if type is pkt
+    pair <unsigned int,unsigned int> dBits; //which bits hold data
+
+    /* the channel builds these signals and uses them in various
+       assertions etc. The reason for creating signal instead of
+       expressions is to have the waveforms in debugging. */
+    Signal *xfer;
+    Signal *blocked;
+    Signal *waiting;
+    Signal *idle;
 
 public:
-  Init_Port *initiator; // (who controls the irdy/data)
-  Targ_Port *target; // (who controls the trdy)
+
+    Port *initiator; // controller of irdy/data
+    Port *target;    // controller of trdy
     
-  Signal *irdy;
-  Signal *trdy;
-  Signal *data;
+    // the channel doesn't build these signals, they are built by the primitives
+    Signal *irdy;
+    Signal *trdy;
+    Signal *data;
+    
+    Timestamp_Signal *timestamp;
+    
+    Channel(string n,                 Hier_Object *p, Network *network);
+    Channel(string n, unsigned int w, Hier_Object *p, Network *network); 
 
-  Channel_Qos *qos;
-  
-  Channel(string n,                 Hier_Object *p) : Hier_Object(n,p) { Init(n,1,p);  } 
-  Channel(string n, unsigned int w, Hier_Object *p) : Hier_Object(n,p) { Init(n,w,p);  }
+    void Init(string n, unsigned int w, PacketType t, Network *p);
 
-  void Init(string n, unsigned int w, Hier_Object *p);
+    void widenForTimestamp( unsigned int w);
 
-  void widenForTimestamp( unsigned int w);
+    pair <unsigned int,unsigned int> getTBits () {return tBits;}
+    pair <unsigned int,unsigned int> getDBits () {return dBits;}
+    unsigned int getDWidth () {return dBits.first - dBits.second + 1;}
 
-  pair <unsigned int,unsigned int> getTBits () {return tBits;}
-  pair <unsigned int,unsigned int> getDBits () {return dBits;}
-  unsigned int getDWidth () {return dBits.first - dBits.second + 1;}
+    PacketType getPacketType() { return type; }
 
-  void setPacketType(PacketType t) { type = t; return; }
-  PacketType getPacketType() { return type; }
+    void setBreakCycleTrdy(bool x);
+    void setNonBlocking (bool x);
+    bool getNonBlocking () {return specifyNonBlocking;};
 
- 
-  void setIrdyPersistant() { assertIrdyPersistant = true; return; }
-  void setTrdyPersistant() { assertTrdyPersistant = true; return; }
-  void setPersistant() { 
-    assertIrdyPersistant = true; 
-    assertTrdyPersistant = true;
-    return; 
-  }
-  void unsetPersistant() {
-    assertIrdyPersistant = false;
-    assertTrdyPersistant = false;
-    return;
-  }
+    void setIrdyPersistant(bool x) { specifyIrdyPersistant = x; return; }
+    void setTrdyPersistant(bool x) { specifyTrdyPersistant = x; return; }
 
-  void buildChannelLogic ( );
+    void buildChannelLogic ( );
+
+    void buildAgeChecker(           unsigned n, string tag );
+    void buildAgeChecker( Expr *en, unsigned n, string tag );
 };
-
-
-
-
-
-
-class Channel_Qos {
-  // unconditionally asserted within time bound (stronger than response)
-  unsigned int targetBound;
-  unsigned int initiatorBound;
-
-  unsigned int targetResponseBound;
-  unsigned int initiatorResponseBound;
-
-  unsigned int timeToSinkBound;
-  unsigned int ageBound;
-  Channel *ch;
-
-  string printHeader();
-
- public:
-  Channel_Qos(Channel *c);
-
-  bool hasTargetResponseBound ();
-  bool hasTargetBound ();
-  bool hasInitiatorResponseBound ();
-  bool hasInitiatorBound ();
-  bool hasTimeToSinkBound ();
-  bool hasAgeBound ();
-
-  // if modifiedChannels bound is lower than current bound, add self to modified set
-  void updateTargetResponseBound( unsigned int b);
-  void updateInitiatorResponseBound( unsigned int b);
-  void updateTargetBound( unsigned int b);
-  void updateInitiatorBound( unsigned int b);
-  void updateTimeToSinkBound( unsigned int t);
-  void updateAgeBound( unsigned int t);
-
-  unsigned int getTargetResponseBound ()    ;
-  unsigned int getTargetBound ()            ;
-  unsigned int getInitiatorResponseBound () ;
-  unsigned int getInitiatorBound ()         ;
-  unsigned int getTimeToSinkBound ()        ;
-  unsigned int getAgeBound ()               ;
-
-  void printChannelQos (ostream &f);
-
-};
-
-
-
 
 
 #endif

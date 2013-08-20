@@ -1,4 +1,5 @@
-#!/usr/bin/perl
+#!/usr/bin/env perl
+
 
 # use local::lib "/home/holcomb/Perl_Modules"; #installs modules without sudo
 use Carp;
@@ -105,7 +106,7 @@ $tb_cex .= '
 endmodule
 ';
 writeFile($Fname_Tb, $tb_cex);
-
+exit(0); #success
 
 sub writeFile {
      my ( $f, @data ) = @_;

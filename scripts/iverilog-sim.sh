@@ -1,7 +1,11 @@
 #!/bin/bash
 
 
-if [ $# -eq 1 ]
+if [ $# -eq 0 ]
+    then
+    VFILE=dump.v
+    TBFILE=tb_rand.v
+elif [ $# -eq 1 ]
     then
     VFILE=$1
     TBFILE=tb_rand.v

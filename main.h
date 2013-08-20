@@ -1,31 +1,48 @@
 #ifndef MAIN_H
 #define MAIN_H
 
-#include <cstdlib>
 
+#include <cstdlib>
+#include <cstdio>
+#include <iostream>
+#include <iomanip>
+#include <algorithm>
+#include <fstream>
+#include <sstream>
+#include <vector>
+#include <set>
+#include <map>
+#include <assert.h>
+#include <cmath>
+#include <unistd.h>
+
+
+// for flattening hierarchy names
 #define HIER_SEPARATOR "__"
  
-//for timebounds that are not assigned anything meaningful
-#define T_PROP_NULL 999
+
+//#define DO_THIS_AT_END_OF_ASSERTION ;
+#define DO_THIS_AT_END_OF_ASSERTION exit(1);
+
 
 #define ASSERT(x)					\
-  if (! (x))						\
+    if (! (x))						\
     {							\
-      cout << "ERROR!! Assert " << #x << " failed\n";	\
-      cout << " on line " << __LINE__  << "\n";		\
-      cout << " in file " << __FILE__ << "\n";		\
-      exit(1) ;						\
-    }
+	cout << "ERROR!! Assert " << #x << " failed\n";	\
+	cout << " on line " << __LINE__  << "\n";	\
+	cout << " in file " << __FILE__ << "\n\n";	\
+	DO_THIS_AT_END_OF_ASSERTION	       		\
+	    }
 
 #define ASSERT2(x,s)					\
-  if (! (x))						\
+    if (! (x))						\
     {							\
-      cout << "ERROR!! Assert " << #x << " failed\n";	\
-      cout << " " << s << "\n";				\
-      cout << " on line " << __LINE__  << "\n";		\
-      cout << " in file " << __FILE__ << "\n";		\
-      exit(1) ;						\
-    }
+	cout << "ERROR!! Assert " << #x << " failed\n";	\
+	cout << " " << s << "\n";			\
+	cout << " on line " << __LINE__  << "\n";	\
+	cout << " in file " << __FILE__ << "\n\n";	\
+	DO_THIS_AT_END_OF_ASSERTION	       		\
+	    }
 
 
 
@@ -34,53 +51,65 @@ class Channel;
 class Network;
 class Ckt;
 class Primitive;
-class Init_Port; //initiator of some channel
-class Targ_Port; //target of some channel
 class Port;
 class Signal;
 class Seq_Signal;
 class Oracle_Signal;
+class Timestamp_Signal;
 class Source;
 class Sink;
 class Queue;
-class Verification_Settings;
+class Delay_Eq;
 
 using namespace std;
 
-// global variables
-extern Ckt *g_ckt;         // a collections of expressions/signals/etc
-extern Network *g_network; // a collection of prims/composites/channels/etc
-extern ofstream g_outQos;  // to write qosReport
+extern Ckt *g_ckt;         // a collection of expressions/signals/etc
 
 
 enum OracleType {
-  ORACLE_EAGER, 
-  ORACLE_DEAD, 
-  ORACLE_NONDETERMINISTIC, 
-  ORACLE_BOUNDED_RESPONSE,
-  ORACLE_BOUNDED
+    ORACLE_EAGER, 
+    ORACLE_DEAD, 
+    ORACLE_NONDETERMINISTIC, 
+    ORACLE_BOUNDED_RESPONSE
 };
 
+enum LatencyOperationType {
+    LATENCY_OPERATION_PLUS, 
+    LATENCY_OPERATION_MAX, 
+    LATENCY_OPERATION_MULTIPLY
+};
 
 
 //for queues and channels, this indicates whether to consider
 //timestamps or not
 enum PacketType {
-  PACKET_CREDIT,
-  PACKET_DATA
+    PACKET_TOKEN,
+    PACKET_DATA
 };
 
-class Expr;
+//for queues and channels, this indicates whether to consider
+//timestamps or not
+enum PortType {
+    PORT_INITIATOR,
+    PORT_TARGET
+};
+
+
+enum FunctionType {
+    FUNCTION_TAG, //put bits onto the lsb
+    FUNCTION_UNTAG, // remove bits from the lsb
+    FUNCTION_ASSIGN // ignore data and just set to some const
+};
+
+enum TimestampType {
+    TIMESTAMP_BINARY_FIXED,
+    TIMESTAMP_BINARY_INCREMENTING,
+    TIMESTAMP_UNARY_INCREMENTING
+};
+
 
 string itos(int i);
-unsigned int numBitsRequired( unsigned int maxval);
-Signal * BvIncrExprModM (Expr *a, unsigned int m, string name);
-Expr * BvsubExprModM (Expr *a, Expr *b , unsigned int maxval, string name);
-Signal * intervalMonitor( Expr * a, Expr * b, unsigned int t, string name);
-void aImpliesBoundedFutureB( Expr * a, Expr * b, unsigned int t, string name);
-
-string validTimeOrDash (unsigned int n);
-
+unsigned numBitsRequired( unsigned maxval);
 
 
 
@@ -88,152 +117,114 @@ string validTimeOrDash (unsigned int n);
 
 /*! \brief a port connects a channel to a port of a primitive*/
 class Port  {
+    string pname;
 public:
-  Primitive *owner; // primitive that contains the port
-  Channel *channel; // channel that is driven by port
-  string pname;
-  // /* \param n an arbitrary local name for this port within prim (e.g. "a")
-  //   \param c the channel connecting to the port (from outside the owner primitive)
-  //   \param p the primitive that port is being instantiated within
-  // */
-  Port(string n, Channel *c, Primitive *p)
-    {
-      pname = n;
-      owner = p;
-      channel = c;
-    };
-};
+    PortType dir;
+    Primitive *owner; // primitive that contains the port
+    Channel *channel; // channel that is driven by port
 
-/*! \brief port acting as a target to a channel */
-class Init_Port : public Port {
-public:
-  Init_Port(string n, Channel *c, Primitive *p);
-};
-
-
-// /*! \brief port acting as initiator of a channel */
-class Targ_Port : public Port {
-public:
-  Targ_Port(string n, Channel *c, Primitive *p);
-};
-
-
-
-
-
-class Verification_Settings {
-  unsigned int tMax;
- public:
-  bool isEnabledPhiLQueue;
-  bool isEnabledNumInv;
-  bool isEnabledPhiGQueue;
-  bool isEnabledBoundChannel; //irdy or trdy unconditional bounds
-  bool isEnabledResponseBoundChannel; //irdy or trdy response bounds
-  bool isEnabledPsi;
-  bool isEnabledPersistance;
-
-  Verification_Settings() { 
-    tMax = T_PROP_NULL;
-    isEnabledNumInv = false;
-    isEnabledPhiLQueue = false;
-    isEnabledPhiGQueue = false;
-    isEnabledResponseBoundChannel = false;
-    isEnabledBoundChannel = false;
-    isEnabledPsi = false;
-    isEnabledPersistance = false;
-  };
-
-
-  void  enableNumInv() { isEnabledNumInv = true;}
-  void disableNumInv() { isEnabledNumInv = false;}
-  
-
-  void  enableBoundChannel() { isEnabledBoundChannel = true;}
-  void disableBoundChannel() { isEnabledBoundChannel = false;}
-  void  enableResponseBoundChannel() { isEnabledResponseBoundChannel = true;}
-  void disableResponseBoundChannel() { isEnabledResponseBoundChannel = false;}
-
-  void  enablePersistance() { isEnabledPersistance = true;}
-  void disablePersistance() { isEnabledPersistance = false;}
-  void  enablePhiLQueue() { isEnabledPhiLQueue = true;}
-  void disablePhiLQueue() { isEnabledPhiLQueue = false;}
-  void  enablePhiGQueue() { isEnabledPhiGQueue = true;}
-  void disablePhiGQueue() { isEnabledPhiGQueue = false;}
-  void  enablePsi() { isEnabledPsi = true;}
-  void disablePsi() { isEnabledPsi = false;}
-
-  void setTMax( unsigned int t) {
-    tMax = t;
-    isEnabledPhiGQueue = true;
-    return;
-  }
-
-  unsigned int getTMax() {return tMax;}
-  bool hasTMax() {return tMax != T_PROP_NULL;}
-
-  void printSettings() {
-    cout 
-      << "\n===================================================\n"
-      << "voptions:\n"
-      << "\t isEnabledNumInv =                   " << isEnabledNumInv                << "\n"
-      << "\t isEnabledPhiLQueue =                " << isEnabledPhiLQueue             << "\n"
-      << "\t isEnabledPhiGQueue =                " << isEnabledPhiGQueue             << "\n"
-      << "\t isEnabledResponseBoundChannel =     " << isEnabledResponseBoundChannel  << "\n"
-      << "\t isEnabledBoundChannel =             " << isEnabledBoundChannel          << "\n"
-      << "\t isEnabledPsi =                      " << isEnabledPsi                   << "\n"
-      << "\t isEnabledPersistance =              " << isEnabledPersistance           << "\n"
-      << "\t tMax =                              " << tMax                           << "\n"
-      << "===================================================\n"
-      ;
-  }
-};
-
-
-
-
-class Ckt {
- public:
-
-  Verification_Settings *voptions;
-  vector<Signal*> signals;
+    Signal *irdy;
+    Signal *data;
+    Signal *trdy;
     
-  // these signals belong only to the ckt and are not within any
-  // network items. they are globally available
-  Seq_Signal *tCurrent;
-
-  // the only input to ckt. All oracle signals are extracted from this.
-  Oracle_Signal *oracleBus;
- 
-  Ckt() { 
-    voptions = new Verification_Settings();
-  };
-
-
-  void buildNetworkLogic(Network *n);
-  void dumpAsVerilog (string fname);
-  void dumpAsUclid (string fname) {return;};
+    // /* \param n an arbitrary local name for this port within prim (e.g. "a")
+    //   \param c the channel connecting to the port (from outside the owner primitive)
+    //   \param p the primitive that port is being instantiated within
+    // */
+    Port(string n, Channel *c, Primitive *p, PortType d);
+    string getName();
 };
 
 
+class Expr;
 
-class Network {
- public:
-  Network( ) {;}
 
-  vector<Channel*>   channels; 
-  vector<Primitive*> primitives; 
-  vector<Source*>    sources;
-  vector<Sink*>      sinks;
-  vector<Queue*>     queues;
+/** Ckt is a collection of signals with logic formulas and maps easily
+ * to RTL some of the signals are circuit logic and some are from
+ * property checkers
+ */
+class Ckt {
 
-  // to keep track of propagations
-  set <Channel*> modifiedChannels;
+    /// all the internal signals of the ckt
+    vector<Signal*> signals;
+    vector<Expr*> expressions;
 
-  void printQos(ostream &f);
-  void printNetwork ();
-  void addLatencyLemmas ();
+    /// global clock used in timestamp encoding, ignored in stopwatch encoding
+    Seq_Signal *tCurrent; 
+    
+    /// the PI to the ckt. All oracle signals bit-extracted from this.
+    Oracle_Signal *oracleBus;
+
+    unsigned tCurrentModulus; // when does counter rollover. used to infer timer width
+    unsigned wClk;
+    TimestampType timestampType;
+
+
+public:
+
+    vector             < Expr *> manualLemmasCond;
+    vector          < unsigned > manualLemmasBound;
+    vector <           Signal *> manualLemmasData;
+    vector < Timestamp_Signal *> manualLemmasTimestamp;
+
+
+    
+    Ckt() {
+	tCurrentModulus = 500;
+	timestampType = TIMESTAMP_BINARY_INCREMENTING;
+    };
+
+
+    void buildNetworkLogic(Network *n);
+    void buildQosLogic(Network *n);
+    void printAssertions( string fname );
+    string sprintAssertions();
+    void printSignals( string fname );
+    void printExpressions( string fname );
+    void dumpAsVerilog (string fname);
+
+    void setAssertionStates( vector <pair < string, bool > > & tagStates );
+    void setAssertionStates( string tag, bool state);
+
+    void setTRange( unsigned t) { tCurrentModulus = t;  return; }
+    void setTimestampType( string s) { 
+	if        (s == "binary_fixed") {	   timestampType = TIMESTAMP_BINARY_FIXED; 
+	} else if (s == "binary_incrementing") {   timestampType = TIMESTAMP_BINARY_INCREMENTING; 
+	} else if (s == "unary_incrementing") {	   timestampType = TIMESTAMP_UNARY_INCREMENTING; 
+	} else { ASSERT(0);}
+	return;
+    } 
+
+
+    // these are friends to modify the ckt when building
+    friend class Primitive;
+    friend class Queue;
+    friend class Source;
+    friend class Sink;
+    friend class Join;
+    friend class Fork;
+    friend class Merge;
+    friend class Switch;
+
+    friend class Demux;
+    friend class Pri_Merge;
+    friend class Ring_Stop;
+
+    friend class Network;
+
+    friend class Expr;
+    friend class Signal;
+    friend class Timestamp_Signal;
+    friend class Main;
+    friend class Delay_Eq;
+    friend class Channel;
+
+    friend Expr * updatedTimestamp(Expr *e);
+    friend Expr * initialTimestamp();
+    friend int mpPlusInt(int a, int b);
+    friend Delay_Eq * crossProduct(Delay_Eq *x, Delay_Eq *y, LatencyOperationType op);
+/*   friend class ; */
 };
-
 
 
 
@@ -241,17 +232,17 @@ class Network {
 
 
 /*!A Hier Object is anything in the hierarchy that contains 1 or more
-  primitives or composite (e.g. credit loop) objects in its subtree.*/
+  primitives or composite (e.g. credit loop, queue, etc) objects in its subtree.*/
 class Hier_Object {
- public:
-  string name; 
-  vector<Hier_Object*> children; 
+public:
+    string name; 
     
-  //root not has no name... (to help keep flat names shorter)
-  Hier_Object( );
-  Hier_Object( const string n, Hier_Object *parent);
-  void addChild (Hier_Object *x);
+    /// to construct root with no name, and keep flattened names shorter
+    Hier_Object( );  
+    Hier_Object( const string n, Network *network);
+    Hier_Object( const string n, Hier_Object *parent, Network *network);
 };
+
 
 
 
