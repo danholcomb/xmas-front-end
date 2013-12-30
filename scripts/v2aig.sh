@@ -31,6 +31,7 @@ MIMA_UDIR=$MIMA_DIR/$RANDOM_DIR
 MIMA_TCLMAIN="/hd/common/jiang/veriabc-alpha-installation/bin/tclmain"
 
 
+
 # otherwise might not notice failure
 rm dump.aig
 
