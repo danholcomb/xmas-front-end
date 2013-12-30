@@ -17,7 +17,7 @@ string itos(int i) {
     return s;
 }
 
-int stoi(string s) { return atoi(s.c_str()); } 
+//int stoi(string s) { return atoi(s.c_str()); } 
 
 unsigned numBitsRequired( unsigned maxval) {
     unsigned x = log2(maxval);

@@ -106,17 +106,17 @@ public:
 Implies_Expr(Expr *a, Expr *b) : Expr(1) {
 	ASSERT( a != 0);
 	ASSERT( b != 0);
-	ASSERT2((a->getWidth()==1), "illegal bool signal width="+getWidth());
-	ASSERT2((b->getWidth()==1), "illegal bool signal width="+getWidth());
+	ASSERT2((a->getWidth()==1), "illegal bool signal width");
+	ASSERT2((b->getWidth()==1), "illegal bool signal width");
 	_a = a;
 	_b = b;
     }
     string printExprVerilog() {
 	ASSERT( _a != 0);
 	ASSERT( _b != 0);
-	ASSERT2((_a->getWidth()==1), "illegal bool signal width="+getWidth());
-	ASSERT2((_b->getWidth()==1), "illegal bool signal width="+getWidth());
-	ASSERT2((getWidth()==1), "illegal expression width="+getWidth());
+	ASSERT2((_a->getWidth()==1), "illegal bool signal width");
+	ASSERT2((_b->getWidth()==1), "illegal bool signal width");
+	ASSERT2((getWidth()==1), "illegal expression width");
 	stringstream out;
 	out << " (~(" << _a->printExprVerilog() << " & (~"<< _b->printExprVerilog() << "))) ";
 	return out.str();
@@ -219,7 +219,7 @@ class Not_Expr : public Expr {
     Expr *_a;
 public:
 Not_Expr(Expr *a ) : Expr(1) {
-	ASSERT2((a->getWidth() == 1), "bitwidth problem: "+a->printExprVerilog() );
+	ASSERT2((a->getWidth() == 1), "bitwidth problem");
 	ASSERT(a->getWidth() == 1);
 	_a = a;
     }

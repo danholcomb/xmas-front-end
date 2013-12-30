@@ -55,7 +55,7 @@ string Case_Expr::printExprVerilog()
 {
     ASSERT(cases.size() > 0);
     ASSERT2(defaultCase!=0, "cant add case without default val first");
-    ASSERT2((getWidth()>0), "illegal expression width="+getWidth());
+    ASSERT2((getWidth()>0), "illegal expression width");
 
     stringstream out;
     out << "(\n";
@@ -81,7 +81,7 @@ Lt_Expr::Lt_Expr( Expr *a, Expr *b) : Expr(1)
 
 string Lt_Expr::printExprVerilog()
 {
-    ASSERT2((getWidth()==1), "illegal expression width="+getWidth());
+    ASSERT2((getWidth()==1), "illegal expression width");
     stringstream out;
     out << "(" << _a->printExprVerilog() << " < "<< _b->printExprVerilog() << ")";
     return out.str();
@@ -98,7 +98,7 @@ Lte_Expr::Lte_Expr( Expr *a, Expr *b) : Expr(1)
 
 string Lte_Expr::printExprVerilog()
 {
-    ASSERT2((getWidth()==1), "illegal expression width="+getWidth());
+    ASSERT2((getWidth()==1), "illegal expression width");
     stringstream out;
     out << "(" << _a->printExprVerilog() << " <= "<< _b->printExprVerilog() << ")";
     return out.str();
@@ -110,7 +110,7 @@ string And_Expr::printExprVerilog()
 {
     if(_ins.size() == 0) {return "1'd1";};
     ASSERT(_ins.size() > 0);
-    ASSERT2((getWidth()==1), "illegal expression width="+getWidth());
+    ASSERT2((getWidth()==1), "illegal expression width");
     stringstream out;
     vector<Expr*>::const_iterator i = _ins.begin();
     out << "(" << (*i)->printExprVerilog();

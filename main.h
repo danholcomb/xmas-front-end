@@ -70,7 +70,8 @@ enum OracleType {
     ORACLE_EAGER, 
     ORACLE_DEAD, 
     ORACLE_NONDETERMINISTIC, 
-    ORACLE_BOUNDED_RESPONSE
+    ORACLE_BOUNDED_RESPONSE,
+    ORACLE_PERIODIC
 };
 
 enum LatencyOperationType {

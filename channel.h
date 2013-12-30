@@ -7,7 +7,7 @@ class Hier_Object;
 
 /*! \brief connection between ports of two xmas components.*/
 class Channel : public Hier_Object {
-    unsigned int width;
+//    unsigned int width;
     PacketType type;
     bool specifyIrdyPersistant;
     bool specifyTrdyPersistant;

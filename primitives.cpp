@@ -597,6 +597,8 @@ Delay_Eq * Source::propagateDelay( Port *p, set <Port*> & visitedPorts )
     ASSERT (p == portO);
     if (source_type == ORACLE_EAGER) {
         return new Delay_Eq(0); 
+    } else if (source_type == ORACLE_PERIODIC) { 
+        return new Delay_Eq(bound); 
     } else if (source_type == ORACLE_NONDETERMINISTIC) {
         return new Delay_Eq(g_ckt->tCurrentModulus);
     }
@@ -1175,14 +1177,14 @@ Sink * Sink::setOracleType( OracleType x, unsigned n )
 
 Source * Source::setOracleType( OracleType x )
 {
-    ASSERT((x == ORACLE_DEAD) or (x == ORACLE_EAGER) or (x == ORACLE_NONDETERMINISTIC));
+    ASSERT((x == ORACLE_DEAD) or (x == ORACLE_EAGER) or (x == ORACLE_NONDETERMINISTIC) or (x == ORACLE_PERIODIC) );
     source_type = x;
     return this;
 }
 
 Source * Source::setOracleType( OracleType x, unsigned n )
 {
-    ASSERT(x == ORACLE_BOUNDED_RESPONSE);
+    ASSERT( (x == ORACLE_BOUNDED_RESPONSE) or (x == ORACLE_PERIODIC) );
     source_type = x;
     bound = n;
     return this;
@@ -1299,6 +1301,22 @@ void Source::buildPrimitiveLogic ( )
     } 
     else if (source_type == ORACLE_NONDETERMINISTIC) {
         portO->irdy -> setExpr( new Or_Expr( oracleIrdy, preBlocked) );
+    }
+    else if (source_type == ORACLE_PERIODIC) {
+
+        unsigned n = numBitsRequired(bound);
+        Seq_Signal *srcCount = (new Seq_Signal("srcCount",n));
+        Signal *srcCountNxt = new Signal(  name+"srcCountNxt", BvIncrExprModM (srcCount, bound+1));
+        srcCount
+            -> setResetExpr( new Bvconst_Expr(0, n ) )
+            -> setNxtExpr( srcCountNxt );
+    
+        Signal *clkRangeValid = (new Signal(name+"srcCountRangeValid", new Lt_Expr(srcCount, new Bvconst_Expr(bound+1,n))))
+            -> setSignalIsAssertion(true)
+            -> addAssertionClassTag("range")
+            -> addAssertionClassTag("psi");
+        
+        //portO->irdy -> setExpr( BvIsZero(srcCount) ); // non-persistant, inject when counter rolls over
     }
     else if (source_type == ORACLE_BOUNDED_RESPONSE) {
 
